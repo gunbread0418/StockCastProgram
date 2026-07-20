@@ -13,7 +13,7 @@
 문서 체계를 생성했다. 초기 기술 기준을 확정하고 `.gitignore`를 작성·검증했다. 애플리케이션과
 인프라 코드는 아직 구현하지 않았다. M0를 완료하려면 `.env.example`, README 보완 및 초기
 디렉터리 정책을 구성해야 한다. 이후 구현 작업은 검증된 atomic commit 단위마다 자동 commit과
-push를 수행하되, 현재 저장소에는 remote가 없어 첫 GitHub 연결이 먼저 필요하다.
+push한다. GitHub `origin`을 연결하고 첫 M0 foundation commit을 `main`에 push했다.
 
 ## 완료된 작업
 
@@ -30,6 +30,7 @@ push를 수행하되, 현재 저장소에는 remote가 없어 첫 GitHub 연결�
 - 제안 항목의 도입 이유, 생략 영향, 대안과 제외 근거를 설명하는 교육 규칙 추가
 - 새 tool이나 산출물 도입 시 `.gitignore`를 같은 작업에서 점검·보완하는 규칙 추가
 - 검증된 atomic change마다 관련 파일을 commit하고 현재 branch를 push하는 지속 규칙 추가
+- 기본 branch를 `main`으로 변경하고 GitHub `origin/main`에 첫 foundation commit push
 
 ## 아직 구현되지 않은 항목
 
@@ -52,11 +53,12 @@ push를 수행하되, 현재 저장소에는 remote가 없어 첫 GitHub 연결�
 ## 저장소 상태
 
 - Git 저장소가 초기화되어 있다.
-- 초기 commit은 아직 없다.
-- Git remote가 아직 없다.
-- 유효한 Git 작성자 이름과 이메일은 설정되어 있으나 이메일의 GitHub 계정 연결 여부는 미확인이다.
+- 기본 branch는 `main`이고 `origin/main`을 upstream으로 추적한다.
+- Git remote `origin`은 `https://github.com/gunbread0418/StockCastProgram.git`이다.
+- 첫 commit은 `5364609` (`chore: initialize project foundation`)이다.
+- Git 작성자 이메일의 GitHub 계정 연결을 사용자가 확인했다.
 - 애플리케이션 파일은 없다.
-- `.gitignore`, `AGENTS.md`, `README.md`와 프로젝트 지속 작업 문서가 아직 Git에 추적되지 않았다.
+- `.gitignore`, `AGENTS.md`, `README.md`와 프로젝트 지속 작업 문서가 Git에서 추적된다.
 
 ## 주요 변경 파일
 
@@ -94,6 +96,9 @@ push를 수행하되, 현재 저장소에는 remote가 없어 첫 GitHub 연결�
 | 2026-07-20 | `.gitignore` 환경 파일 규칙 검증 | `.env` ignored `True`, `.env.example` ignored `False` |
 | 2026-07-20 | Git 상태 재확인 | `.gitignore`, `AGENTS.md`, `README.md`, `docs/`가 미추적 상태 |
 | 2026-07-20 | Git remote와 작성자 설정 확인 | remote 없음, 작성자 설정 존재, GitHub 이메일 연결 여부 미확인 |
+| 2026-07-20 | staged diff와 민감정보 검사 | whitespace 오류 수정 후 통과, secret-like assigned value 없음 |
+| 2026-07-20 | GitHub 원격 확인 | `origin` 접근 성공, push 전 remote branch 없음 확인 |
+| 2026-07-20 | 첫 commit과 push | `5364609` 생성, `main -> origin/main`, upstream 설정 성공 |
 
 ## 알려진 실패와 blocker
 
@@ -102,15 +107,15 @@ push를 수행하되, 현재 저장소에는 remote가 없어 첫 GitHub 연결�
 - 전역 Git 설정을 변경하지 않고 명령별 `safe.directory` 옵션으로 읽기 검증 가능
 - `C:\WINDOWS\System32`에서 처음 실행한 `check-ignore`는 저장소를 찾지 못해 실패했으며,
   저장소로 이동하거나 `git -C <repository>`를 사용하면 정상 실행됨
-- Git remote가 없어 현재 commit을 GitHub로 push할 수 없음
-- 현재 Git 작성자 이메일이 GitHub 계정에 연결되었는지 확인하기 전에는 잔디 반영을 보장할 수 없음
+- 샌드박스에서 branch rename 시 `.git/HEAD.lock` 생성 권한이 없어 부분 실패했으며, 승인된
+  권한으로 `HEAD`를 `main`에 연결해 복구함
+- 샌드박스 네트워크에서는 GitHub `ls-remote`가 차단됐으며, 승인된 네트워크 접근으로 검증함
 
 ## 다음 작업
 
-첫 commit 전에 GitHub에 비어 있는 repository를 준비해 `origin` URL을 제공하고, 현재 Git
-작성자 이메일이 GitHub 계정에 연결되어 있는지 확인한다. 연결 후 현재 M0 foundation 변경을
-검증해 첫 atomic commit으로 push하고 `.env.example` TODO로 이동한다.
+M0의 다음 단일 TODO로 `.env.example`에 필요한 변수 범주와 안전한 placeholder 정책을 먼저
+설명한 뒤, 사용자가 파일을 직접 작성하고 실제 secret이 포함되지 않았는지 검증한다.
 
 ## 다음 채팅 시작 문장
 
-`GitHub에 비어 있는 StockCastProgram repository를 만들었고 현재 Git 작성자 이메일의 계정 연결도 확인했어. remote URL은 <URL>이야. origin 연결과 첫 commit/push를 진행해줘.`
+`.gitignore`와 첫 GitHub push를 완료했어. M0의 다음 TODO인 `.env.example` 작성을 각 항목의 이유와 함께 안내해줘.`
