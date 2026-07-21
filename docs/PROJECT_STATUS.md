@@ -2,7 +2,7 @@
 
 ## 문서 메타데이터
 
-- 마지막 업데이트: 2026-07-20
+- 마지막 업데이트: 2026-07-21
 - 현재 마일스톤: M0. Repository 초기화와 설계 기준
 - 상태: IN_PROGRESS
 - 다음 마일스톤: M1. Docker Compose 인프라
@@ -10,10 +10,11 @@
 ## 현재 요약
 
 프로젝트 요구사항과 전체 방향을 정리했고, 새 채팅에서도 맥락을 복구할 수 있도록 지속 작업
-문서 체계를 생성했다. 초기 기술 기준을 확정하고 `.gitignore`를 작성·검증했다. 애플리케이션과
-인프라 코드는 아직 구현하지 않았다. M0를 완료하려면 `.env.example`, README 보완 및 초기
-디렉터리 정책을 구성해야 한다. 이후 구현 작업은 검증된 atomic commit 단위마다 자동 commit과
-push한다. GitHub `origin`을 연결하고 첫 M0 foundation commit을 `main`에 push했다.
+문서 체계를 생성했다. 초기 기술 기준을 확정하고 `.gitignore`와 `.env.example`을 작성·검증했다.
+사용자가 보고한 오류를 원인, 해결 과정과 검증 결과까지 누적하는 troubleshooting 기록 체계도
+추가했다. 애플리케이션과 인프라 코드는 아직 구현하지 않았다. M0를 완료하려면 README 보완 및
+초기 디렉터리 정책을 구성해야 한다. 이후 구현 작업은 검증된 atomic commit 단위마다 자동
+commit과 push한다. GitHub `origin`의 `main`에 현재 변경을 지속해서 push하고 있다.
 
 ## 완료된 작업
 
@@ -31,10 +32,11 @@ push한다. GitHub `origin`을 연결하고 첫 M0 foundation commit을 `main`�
 - 새 tool이나 산출물 도입 시 `.gitignore`를 같은 작업에서 점검·보완하는 규칙 추가
 - 검증된 atomic change마다 관련 파일을 commit하고 현재 branch를 push하는 지속 규칙 추가
 - 기본 branch를 `main`으로 변경하고 GitHub `origin/main`에 첫 foundation commit push
+- 로컬 서비스 설정의 변수명과 안전한 placeholder를 제공하는 `.env.example` 작성 및 검증
+- 사용자 보고 오류를 `OPEN`부터 해결 검증까지 누적하는 troubleshooting 규칙과 문서 추가
 
 ## 아직 구현되지 않은 항목
 
-- `.env.example`
 - 실제 source directory
 - Docker Compose
 - Spring Boot 프로젝트
@@ -56,16 +58,20 @@ push한다. GitHub `origin`을 연결하고 첫 M0 foundation commit을 `main`�
 - 기본 branch는 `main`이고 `origin/main`을 upstream으로 추적한다.
 - Git remote `origin`은 `https://github.com/gunbread0418/StockCastProgram.git`이다.
 - 첫 commit은 `5364609` (`chore: initialize project foundation`)이다.
+- `.env.example` commit은 `aaeff71` (`chore: add local environment template`)이다.
 - Git 작성자 이메일의 GitHub 계정 연결을 사용자가 확인했다.
 - 애플리케이션 파일은 없다.
-- `.gitignore`, `AGENTS.md`, `README.md`와 프로젝트 지속 작업 문서가 Git에서 추적된다.
+- `.gitignore`, `.env.example`, `AGENTS.md`, `README.md`와 프로젝트 지속 작업 문서가 Git에서
+  추적된다.
 
 ## 주요 변경 파일
 
 - `.gitignore`: secret, build output, Python cache, IDE와 로컬 도구 metadata 제외 규칙
-- `AGENTS.md`: 항목별 설명, `.gitignore` 자동 점검과 atomic commit/push 지속 규칙
-- `README.md`: 첫 ML 목표를 다음 5분 가격 방향 분류로 명확화
+- `.env.example`: 로컬 Compose와 PostgreSQL, MongoDB, Redis, Kafka의 공개 가능한 설정 예시
+- `AGENTS.md`: 항목별 설명, ignore 점검, atomic commit/push와 오류 기록 지속 규칙
+- `README.md`: 첫 ML 목표를 명확화하고 troubleshooting 문서 링크 추가
 - `docs/PROJECT_CONTEXT.md`: 잠정 기술 기준을 확정 상태로 변경
+- `docs/TROUBLESHOOTING.md`: 사용자 보고 오류의 증상, 원인, 해결, 검증과 재발 방지 기록
 
 ## 추후 `.gitignore` 점검 시점
 
@@ -99,6 +105,9 @@ push한다. GitHub `origin`을 연결하고 첫 M0 foundation commit을 `main`�
 | 2026-07-20 | staged diff와 민감정보 검사 | whitespace 오류 수정 후 통과, secret-like assigned value 없음 |
 | 2026-07-20 | GitHub 원격 확인 | `origin` 접근 성공, push 전 remote branch 없음 확인 |
 | 2026-07-20 | 첫 commit과 push | `5364609` 생성, `main -> origin/main`, upstream 설정 성공 |
+| 2026-07-21 | `.env.example` 구조·보안 검증 | 변수 14개, 형식·중복·누락·예상 밖 변수·placeholder·포트 오류 0건 |
+| 2026-07-21 | 환경 파일 추적 정책 검증 | `.env.example` ignored `False`, 실제 `.env` 없음 |
+| 2026-07-21 | `.env.example` commit과 push | `aaeff71` 생성, `main -> origin/main` push 성공 |
 
 ## 알려진 실패와 blocker
 
@@ -107,15 +116,17 @@ push한다. GitHub `origin`을 연결하고 첫 M0 foundation commit을 `main`�
 - 전역 Git 설정을 변경하지 않고 명령별 `safe.directory` 옵션으로 읽기 검증 가능
 - `C:\WINDOWS\System32`에서 처음 실행한 `check-ignore`는 저장소를 찾지 못해 실패했으며,
   저장소로 이동하거나 `git -C <repository>`를 사용하면 정상 실행됨
+- 파일명 오기입 상태에서 실행한 `.env.example` 검증은 대상 경로가 없어 실패했으며, 파일명을
+  바로잡은 뒤 검증을 통과함. 재사용 가능한 해결 과정은 `docs/TROUBLESHOOTING.md`에 기록함
 - 샌드박스에서 branch rename 시 `.git/HEAD.lock` 생성 권한이 없어 부분 실패했으며, 승인된
   권한으로 `HEAD`를 `main`에 연결해 복구함
 - 샌드박스 네트워크에서는 GitHub `ls-remote`가 차단됐으며, 승인된 네트워크 접근으로 검증함
 
 ## 다음 작업
 
-M0의 다음 단일 TODO로 `.env.example`에 필요한 변수 범주와 안전한 placeholder 정책을 먼저
-설명한 뒤, 사용자가 파일을 직접 작성하고 실제 secret이 포함되지 않았는지 검증한다.
+M0의 다음 단일 TODO로 `backend-spring/`, `prediction-service/`, `infra/`, `scripts/`의 책임과
+초기 Git 추적 방법을 설명한 뒤, 사용자가 기본 디렉터리 구조를 직접 생성하고 검증한다.
 
 ## 다음 채팅 시작 문장
 
-`.gitignore`와 첫 GitHub push를 완료했어. M0의 다음 TODO인 `.env.example` 작성을 각 항목의 이유와 함께 안내해줘.`
+`.env.example`과 troubleshooting 기록 체계를 완료했어. M0의 다음 TODO인 기본 디렉터리 정책을 각 항목의 이유와 함께 안내해줘.`

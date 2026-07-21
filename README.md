@@ -22,6 +22,7 @@ PostgreSQL, MongoDB, Redis에 목적별로 저장한 뒤 FastAPI 기반 ML 서�
 - [전체 로드맵](docs/ROADMAP.md)
 - [시스템 아키텍처](docs/architecture/SYSTEM_OVERVIEW.md)
 - [설계 결정 기록](docs/adr/README.md)
+- [오류 및 해결 기록](docs/TROUBLESHOOTING.md)
 - [작업 기록 규칙](docs/worklogs/README.md)
 - [Codex 작업 규칙](AGENTS.md)
 
