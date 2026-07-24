@@ -28,11 +28,11 @@ PostgreSQL, MongoDB, Redis에 목적별로 저장한 뒤 FastAPI 기반 ML 서�
 
 ## 현재 상태
 
-프로젝트 문서 체계를 구성하는 `M0. Repository 초기화와 설계 기준` 단계입니다.
-애플리케이션과 인프라 코드는 아직 구현하지 않았습니다. 정확한 최신 상태는
+`M0. Repository 초기화와 설계 기준`을 완료했고 `M1. Docker Compose 인프라`를 시작하기
+전입니다. 애플리케이션과 인프라 코드는 아직 구현하지 않았습니다. 정확한 최신 상태는
 [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)를 확인합니다.
 
-## 계획된 저장소 구조
+## 저장소 구조
 
 ```text
 StockCastProgram/
@@ -46,6 +46,14 @@ StockCastProgram/
 |-- .gitignore
 `-- .env.example
 ```
+
+각 최상위 디렉터리의 상세 책임과 제외 범위는 해당 README에서 확인합니다.
+
+- [Spring Backend 경계](backend-spring/README.md)
+- [Prediction Service 경계](prediction-service/README.md)
+- [Infrastructure 경계](infra/README.md)
+- [Repository Scripts 경계](scripts/README.md)
+- [Project Documentation 경계](docs/README.md)
 
 ## 비목표
 

@@ -24,3 +24,4 @@ ADR은 중요한 기술 또는 구조 선택의 맥락, 결정, 대안과 결과
 | ID | 제목 | 상태 |
 |---|---|---|
 | [0001](0001-data-storage-responsibilities.md) | 데이터 저장소와 메시징 책임 분리 | Accepted |
+| [0002](0002-monorepo-directory-boundaries.md) | Monorepo와 최상위 디렉터리 경계 | Accepted |

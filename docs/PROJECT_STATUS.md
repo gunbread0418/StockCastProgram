@@ -2,48 +2,46 @@
 
 ## 문서 메타데이터
 
-- 마지막 업데이트: 2026-07-21
-- 현재 마일스톤: M0. Repository 초기화와 설계 기준
-- 상태: IN_PROGRESS
-- 다음 마일스톤: M1. Docker Compose 인프라
+- 마지막 업데이트: 2026-07-24
+- 최근 완료 마일스톤: M0. Repository 초기화와 설계 기준
+- 현재 마일스톤: M1. Docker Compose 인프라
+- 상태: NOT_STARTED
+- 다음 마일스톤: M2. Spring Boot 기본 구성
 
 ## 현재 요약
 
-프로젝트 요구사항과 전체 방향을 정리했고, 새 채팅에서도 맥락을 복구할 수 있도록 지속 작업
-문서 체계를 생성했다. 초기 기술 기준을 확정하고 `.gitignore`와 `.env.example`을 작성·검증했다.
-사용자가 보고한 오류를 원인, 해결 과정과 검증 결과까지 누적하는 troubleshooting 기록 체계도
-추가했다. 애플리케이션과 인프라 코드는 아직 구현하지 않았다. M0를 완료하려면 README 보완 및
-초기 디렉터리 정책을 구성해야 한다. 이후 구현 작업은 검증된 atomic commit 단위마다 자동
-commit과 push한다. GitHub `origin`의 `main`에 현재 변경을 지속해서 push하고 있다.
+M0의 프로젝트 목적, 작업 규칙, 상태·로드맵·아키텍처·ADR 문서, `.gitignore`,
+`.env.example`과 최상위 디렉터리 정책을 작성하고 검증했다. `backend-spring/`,
+`prediction-service/`, `infra/`, `scripts/`, `docs/`는 각 README로 책임과 제외 범위를
+문서화해 Git에서 추적한다. 애플리케이션과 인프라 코드는 아직 구현하지 않았다.
+
+다음 작업은 M1을 시작하기 전에 Docker Engine과 Docker Compose의 설치, daemon 실행과
+명령 사용 가능 여부를 검증하는 것이다.
 
 ## 완료된 작업
 
 - 프로젝트 목적, 학습 목표와 비목표 정리
-- 전체 이벤트 기반 아키텍처 초안 수립
-- Kafka, PostgreSQL, MongoDB, Redis와 FastAPI의 책임 정의
+- 전체 이벤트 기반 아키텍처와 저장소 책임 수립
 - 기본, 확장, 고도화 마일스톤 구성
-- 새 채팅용 프로젝트 맥락 로딩 규칙 정의
-- 작업 종료 시 상태 동기화, 다음 행동 상기와 새 채팅 권장 규칙 정의
-- 루트 `AGENTS.md` 생성
-- 프로젝트 context, status, roadmap, architecture, ADR와 worklog 문서 생성
-- Gradle Kotlin DSL, `com.stockcast`, fake 종목 3개와 1초 tick, 다음 5분 방향 분류 확정
-- Gradle, Python, IDE, 로컬 agent metadata와 secret을 구분한 `.gitignore` 작성 및 검증
-- 제안 항목의 도입 이유, 생략 영향, 대안과 제외 근거를 설명하는 교육 규칙 추가
-- 새 tool이나 산출물 도입 시 `.gitignore`를 같은 작업에서 점검·보완하는 규칙 추가
-- 검증된 atomic change마다 관련 파일을 commit하고 현재 branch를 push하는 지속 규칙 추가
-- 기본 branch를 `main`으로 변경하고 GitHub `origin/main`에 첫 foundation commit push
-- 로컬 서비스 설정의 변수명과 안전한 placeholder를 제공하는 `.env.example` 작성 및 검증
-- 사용자 보고 오류를 `OPEN`부터 해결 검증까지 누적하는 troubleshooting 규칙과 문서 추가
+- 새 채팅용 맥락 로딩과 상태 동기화 규칙 정의
+- 사용자 보고 오류의 원인, 해결, 검증과 재발 방지 기록 규칙 정의
+- Gradle Kotlin DSL, `com.stockcast`, fake 종목 3개, 1초 tick과 다음 5분 방향 분류 확정
+- secret, build output, cache, IDE와 로컬 metadata를 구분한 `.gitignore` 작성·검증
+- 공개 가능한 로컬 서비스 설정을 제공하는 `.env.example` 작성·검증
+- Git 기본 branch를 `main`으로 변경하고 GitHub `origin/main` 연결
+- 검증된 atomic change마다 관련 파일을 commit하고 현재 branch를 push하는 규칙 적용
+- Spring, Prediction, Infrastructure, Scripts와 Docs의 최상위 책임 경계 문서화
+- monorepo와 최상위 디렉터리 선택 근거를 ADR-0002로 기록
 
 ## 아직 구현되지 않은 항목
 
-- 실제 source directory
-- Docker Compose
-- Spring Boot 프로젝트
-- FastAPI 프로젝트
+- Docker Compose와 외부 의존 service
+- Spring Boot source와 Gradle build
+- FastAPI source와 Python package
 - DB schema와 migration
 - Kafka topic과 producer/consumer
-- 테스트와 monitoring
+- domain·통합·계약 테스트
+- monitoring과 장애 실험
 
 ## 확정된 초기 기준
 
@@ -51,27 +49,41 @@ commit과 push한다. GitHub `origin`의 `main`에 현재 변경을 지속해서
 - Java base package: `com.stockcast`
 - 초기 market data: `FAKE` exchange, 종목 3개, 1초 tick
 - 첫 ML target: 다음 5분 방향 분류
+- DB와 event 시간 기준: UTC
+- 저장소 구조: Java, Python, Infra, Scripts와 Docs를 분리한 monorepo
 
 ## 저장소 상태
 
-- Git 저장소가 초기화되어 있다.
-- 기본 branch는 `main`이고 `origin/main`을 upstream으로 추적한다.
+- Git 저장소의 기본 branch는 `main`이고 `origin/main`을 upstream으로 추적한다.
 - Git remote `origin`은 `https://github.com/gunbread0418/StockCastProgram.git`이다.
 - 첫 commit은 `5364609` (`chore: initialize project foundation`)이다.
 - `.env.example` commit은 `aaeff71` (`chore: add local environment template`)이다.
 - Git 작성자 이메일의 GitHub 계정 연결을 사용자가 확인했다.
-- 애플리케이션 파일은 없다.
-- `.gitignore`, `.env.example`, `AGENTS.md`, `README.md`와 프로젝트 지속 작업 문서가 Git에서
-  추적된다.
+- 애플리케이션과 인프라 실행 파일은 아직 없다.
+- 최상위 component 디렉터리는 빈 디렉터리용 `.gitkeep`이 아니라 책임 README로 추적한다.
+
+## 최상위 디렉터리 정책
+
+| 디렉터리 | 책임 | 실제 구현 시작 |
+|---|---|---|
+| `backend-spring/` | Spring API, Java 도메인, Kafka와 저장소 연동 | M2 |
+| `prediction-service/` | FastAPI, Python feature, 학습·추론과 worker | M9 |
+| `infra/` | Compose와 외부 의존 service의 로컬 실행 설정 | M1 |
+| `scripts/` | component를 가로지르는 반복 실행·검증 자동화 | 실제 반복 작업 발생 시 |
+| `docs/` | 상태, 설계 결정, 오류와 작업 근거 | 모든 마일스톤 |
 
 ## 주요 변경 파일
 
-- `.gitignore`: secret, build output, Python cache, IDE와 로컬 도구 metadata 제외 규칙
-- `.env.example`: 로컬 Compose와 PostgreSQL, MongoDB, Redis, Kafka의 공개 가능한 설정 예시
-- `AGENTS.md`: 항목별 설명, ignore 점검, atomic commit/push와 오류 기록 지속 규칙
-- `README.md`: 첫 ML 목표를 명확화하고 troubleshooting 문서 링크 추가
-- `docs/PROJECT_CONTEXT.md`: 잠정 기술 기준을 확정 상태로 변경
-- `docs/TROUBLESHOOTING.md`: 사용자 보고 오류의 증상, 원인, 해결, 검증과 재발 방지 기록
+- `backend-spring/README.md`: Java backend의 포함·제외 범위와 M2·M4 도입 시점
+- `prediction-service/README.md`: Python ML service의 포함·제외 범위와 M9·M10·M12 도입 시점
+- `infra/README.md`: Compose, 초기화, healthcheck와 로컬 데이터 제외 정책
+- `scripts/README.md`: 저장소 공통 자동화와 service별 명령의 경계
+- `docs/README.md`: 프로젝트 문서 책임과 문서 지도
+- `docs/adr/0002-monorepo-directory-boundaries.md`: monorepo 구조의 대안과 결과
+- `README.md`: 계획 구조를 실제 저장소 구조와 component 문서 링크로 갱신
+- `docs/PROJECT_CONTEXT.md`: UTC 저장 기준을 사용자 확정 상태로 동기화
+- `docs/architecture/SYSTEM_OVERVIEW.md`: 첫 ML 목표의 낡은 `후보` 표현 제거
+- `docs/ROADMAP.md`: M0 상태를 `DONE`으로 전환
 
 ## 추후 `.gitignore` 점검 시점
 
@@ -82,51 +94,56 @@ commit과 push한다. GitHub `origin`의 `main`에 현재 변경을 지속해서
 | M13 선택 UI | `node_modules/`와 선택한 frontend tool cache | 현재 Node 기반 UI가 존재하지 않음 |
 | 모든 마일스톤 | 새 build tool의 cache, log와 generated output | 실제 경로를 확인한 뒤 좁은 규칙으로 추가해야 함 |
 
-## 이번 마일스톤 완료 기준
+## M0 완료 검증
 
 - 프로젝트 목적과 비목표가 문서화됨
-- Codex가 새 채팅에서 읽을 루트 지침이 존재함
-- 현재 상태와 다음 작업이 한 문서에서 확인됨
-- 전체 마일스톤과 첫 설계 결정이 문서화됨
-- 잠정 기술 기준이 사용자 확인을 거쳐 확정됨
-- `.gitignore`와 `.env.example`이 안전하게 작성됨
+- 새 채팅에서 읽을 루트 지침과 현재 상태 문서가 존재함
+- 전체 마일스톤, 시스템 경계와 구조 결정이 문서화됨
+- `.gitignore`가 실제 secret을 제외하고 `.env.example`을 추적함
+- 최상위 component 책임과 Git 추적 정책이 README와 ADR에 기록됨
+- 문서 내부 링크, 필수 파일, 민감정보와 Git 상태 검증을 통과함
+
+## 현재 마일스톤 완료 기준
+
+- PostgreSQL, Redis, MongoDB, Kafka와 Kafka UI가 Compose로 실행됨
+- 각 service healthcheck와 의존 관계가 정의됨
+- 필요한 데이터가 재시작 후 보존됨
+- DB·Redis·Mongo 접속과 Kafka produce/consume 검증이 성공함
+- secret 없이 다른 개발 환경에서 로컬 인프라를 재현할 수 있음
 
 ## 검증 기록
 
 | 날짜 | 검증 | 결과 |
 |---|---|---|
-| 2026-07-14 | 기존 workspace 확인 | `.git`, `.agents`, `.codex` 외 프로젝트 파일 없음 |
-| 2026-07-14 | Git 상태 확인 | 초기 commit이 없는 `master` branch 확인 |
+| 2026-07-14 | 기존 workspace와 Git 상태 확인 | 초기 commit이 없는 `master` branch 확인 |
 | 2026-07-14 | 지속 작업 문서 생성 | 상대 링크, 필수 내용, UTF-8 검증 통과 |
-| 2026-07-14 | `AGENTS.md` 크기 확인 | 8,470 bytes로 기본 32 KiB 한도 이내 |
-| 2026-07-20 | `.gitignore` 환경 파일 규칙 검증 | `.env` ignored `True`, `.env.example` ignored `False` |
-| 2026-07-20 | Git 상태 재확인 | `.gitignore`, `AGENTS.md`, `README.md`, `docs/`가 미추적 상태 |
-| 2026-07-20 | Git remote와 작성자 설정 확인 | remote 없음, 작성자 설정 존재, GitHub 이메일 연결 여부 미확인 |
-| 2026-07-20 | staged diff와 민감정보 검사 | whitespace 오류 수정 후 통과, secret-like assigned value 없음 |
-| 2026-07-20 | GitHub 원격 확인 | `origin` 접근 성공, push 전 remote branch 없음 확인 |
+| 2026-07-20 | `.gitignore` 환경 파일 규칙 | `.env` ignored `True`, `.env.example` ignored `False` |
+| 2026-07-20 | staged diff와 민감정보 검사 | whitespace 수정 후 통과, secret-like assigned value 없음 |
 | 2026-07-20 | 첫 commit과 push | `5364609` 생성, `main -> origin/main`, upstream 설정 성공 |
-| 2026-07-21 | `.env.example` 구조·보안 검증 | 변수 14개, 형식·중복·누락·예상 밖 변수·placeholder·포트 오류 0건 |
-| 2026-07-21 | 환경 파일 추적 정책 검증 | `.env.example` ignored `False`, 실제 `.env` 없음 |
+| 2026-07-21 | `.env.example` 구조·보안 | 변수 14개, 형식·중복·누락·placeholder·포트 오류 0건 |
 | 2026-07-21 | `.env.example` commit과 push | `aaeff71` 생성, `main -> origin/main` push 성공 |
+| 2026-07-24 | 최상위 README 구조 | 필수 파일 5개, 빈 파일·필수 heading 누락·ignore 대상 0건 |
+| 2026-07-24 | M0 필수 파일과 환경 정책 | 누락 0건, 실제 `.env` 없음, `.env` ignored, 예시는 추적 대상 |
+| 2026-07-24 | Markdown 내부 링크와 민감정보 패턴 | 깨진 링크 0건, secret-like pattern 0건 |
+| 2026-07-24 | 확정 기술 기준 문서 일치 | UTC와 다음 5분 방향 분류를 확정 상태로 동기화 |
+| 2026-07-24 | staged whitespace 재검증 | README 5개의 EOF 빈 줄 제거 후 `diff --cached --check` 통과 |
 
 ## 알려진 실패와 blocker
 
 - 기능 blocker 없음
 - 일반 `git status`는 샌드박스 사용자와 저장소 소유권 차이로 `dubious ownership` 오류 발생
-- 전역 Git 설정을 변경하지 않고 명령별 `safe.directory` 옵션으로 읽기 검증 가능
-- `C:\WINDOWS\System32`에서 처음 실행한 `check-ignore`는 저장소를 찾지 못해 실패했으며,
-  저장소로 이동하거나 `git -C <repository>`를 사용하면 정상 실행됨
-- 파일명 오기입 상태에서 실행한 `.env.example` 검증은 대상 경로가 없어 실패했으며, 파일명을
-  바로잡은 뒤 검증을 통과함. 재사용 가능한 해결 과정은 `docs/TROUBLESHOOTING.md`에 기록함
-- 샌드박스에서 branch rename 시 `.git/HEAD.lock` 생성 권한이 없어 부분 실패했으며, 승인된
-  권한으로 `HEAD`를 `main`에 연결해 복구함
-- 샌드박스 네트워크에서는 GitHub `ls-remote`가 차단됐으며, 승인된 네트워크 접근으로 검증함
+- 전역 Git 설정 대신 명령별 `safe.directory` 옵션으로 Git 명령을 실행함
+- 저장소 밖에서 실행한 `git check-ignore`와 파일명 오기입으로 인한 `.env.example` 검증 실패는
+  해결했으며 자세한 과정은 `docs/TROUBLESHOOTING.md`에 기록함
+- README 5개의 EOF 빈 줄 때문에 staged diff 검증이 처음 실패했으나 빈 줄 제거 후 통과했으며
+  `ERR-003`으로 기록함
+- 샌드박스의 `.git` 쓰기와 네트워크 제한은 승인된 권한으로 commit과 GitHub 접근을 수행함
 
 ## 다음 작업
 
-M0의 다음 단일 TODO로 `backend-spring/`, `prediction-service/`, `infra/`, `scripts/`의 책임과
-초기 Git 추적 방법을 설명한 뒤, 사용자가 기본 디렉터리 구조를 직접 생성하고 검증한다.
+M1의 첫 단일 TODO로 Docker Engine과 Docker Compose의 설치 version, daemon 실행 여부와
+기본 명령 사용 가능 여부를 확인한다. 이 검증을 통과하기 전에는 Compose 파일을 작성하지 않는다.
 
 ## 다음 채팅 시작 문장
 
-`.env.example`과 troubleshooting 기록 체계를 완료했어. M0의 다음 TODO인 기본 디렉터리 정책을 각 항목의 이유와 함께 안내해줘.`
+`M0를 완료했어. M1 첫 TODO인 Docker Engine과 Docker Compose 실행 환경 검증을 명령별 이유와 성공·실패 기준까지 안내해줘.`

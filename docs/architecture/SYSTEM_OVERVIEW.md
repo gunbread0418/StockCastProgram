@@ -148,7 +148,7 @@ flowchart LR
 
 ## ML 기준선
 
-- 1차 목표 후보: 완료된 1분 candle을 사용한 다음 5분 방향 분류
+- 1차 목표: 완료된 1분 candle을 사용한 다음 5분 방향 분류
 - 모델 순서: DummyClassifier -> Logistic Regression -> tree boosting 비교
 - random split을 사용하지 않고 시간 순서를 유지한다.
 - 학습과 추론에서 동일한 versioned feature 함수를 사용한다.

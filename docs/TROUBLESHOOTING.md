@@ -23,6 +23,7 @@
 |---|---|---|---|---|---|
 | ERR-001 | 2026-07-20 | M0 | RESOLVED | `not a git repository` | Git 명령을 저장소 밖에서 실행함 |
 | ERR-002 | 2026-07-21 | M0 | RESOLVED | `.env.example` 경로를 찾지 못함 | 파일명 오기입으로 대상 파일이 없었음 |
+| ERR-003 | 2026-07-24 | M0 | RESOLVED | `new blank line at EOF` | README 끝에 개행이 두 개 있었음 |
 
 ## ERR-001: 저장소를 찾지 못한 `git check-ignore`
 
@@ -52,6 +53,21 @@
   대상이 아니고 실제 `.env` 파일은 존재하지 않았다.
 - 재발 방지: 내용 검증 전에 `Test-Path -LiteralPath .env.example`로 존재 여부를 먼저 확인하고,
   파일명은 `.gitignore`의 예외 규칙 `!.env.example`과 대조한다.
+
+## ERR-003: README 끝의 불필요한 빈 줄
+
+- 상태: `RESOLVED`
+- 실행 맥락: M0 디렉터리 README와 상태 문서를 stage한 뒤
+  `git diff --cached --check`를 실행했다.
+- 증상: `backend-spring/`, `prediction-service/`, `infra/`, `scripts/`, `docs/`의 README에
+  `new blank line at EOF`가 보고되어 commit 전 검증이 중단됐다.
+- 원인: 각 파일이 마지막 문장 뒤에 줄 종료용 개행 하나와 내용 없는 추가 개행 하나를 가져,
+  Git이 파일 끝의 새 빈 줄을 whitespace 오류로 판단했다.
+- 해결 과정: 다섯 README의 마지막 내용 없는 줄을 제거하고 다시 stage했다.
+- 검증 결과: 각 파일의 끝 개행 수가 1인 것을 확인했고 `git diff --cached --check`가
+  오류 없이 통과했다.
+- 재발 방지: 새 텍스트 파일은 마지막 줄 종료용 개행 하나만 남기고 commit 전
+  `git diff --cached --check`를 항상 실행한다.
 
 ## 새 오류 기록 템플릿
 

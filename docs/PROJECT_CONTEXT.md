@@ -141,7 +141,7 @@ PostgreSQL, MongoDB, Redis에 저장한 뒤 독립된 FastAPI ML 서비스로 �
 | tick 간격 | 1초 | 확정 |
 | candle 간격 | 1분 | 요구사항 기준 |
 | 1차 ML target | 다음 5분 방향 분류 | 확정 |
-| DB 시간 저장 | UTC | 권장 |
+| DB 시간 저장 | UTC | 확정 |
 
 ## 데이터 저장소 책임
 
