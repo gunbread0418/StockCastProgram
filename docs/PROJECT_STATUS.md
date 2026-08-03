@@ -2,10 +2,10 @@
 
 ## 문서 메타데이터
 
-- 마지막 업데이트: 2026-07-24
+- 마지막 업데이트: 2026-08-03
 - 최근 완료 마일스톤: M0. Repository 초기화와 설계 기준
 - 현재 마일스톤: M1. Docker Compose 인프라
-- 상태: NOT_STARTED
+- 상태: IN_PROGRESS
 - 다음 마일스톤: M2. Spring Boot 기본 구성
 
 ## 현재 요약
@@ -15,8 +15,10 @@ M0의 프로젝트 목적, 작업 규칙, 상태·로드맵·아키텍처·ADR �
 `prediction-service/`, `infra/`, `scripts/`, `docs/`는 각 README로 책임과 제외 범위를
 문서화해 Git에서 추적한다. 애플리케이션과 인프라 코드는 아직 구현하지 않았다.
 
-다음 작업은 M1을 시작하기 전에 Docker Engine과 Docker Compose의 설치, daemon 실행과
-명령 사용 가능 여부를 검증하는 것이다.
+M1의 첫 TODO인 Docker 실행 환경 사전검증을 완료했다. Docker Desktop, Docker Engine과
+Docker Compose의 version, Linux daemon 연결, 기본 Engine·Compose 명령과 `hello-world`
+실행을 검증했다. 다음 작업은 `infra/`에서 PostgreSQL 단일 service의 image, port,
+environment, named volume과 healthcheck 구성을 학습하고 첫 Compose 설정을 작성하는 것이다.
 
 ## 완료된 작업
 
@@ -32,6 +34,7 @@ M0의 프로젝트 목적, 작업 규칙, 상태·로드맵·아키텍처·ADR �
 - 검증된 atomic change마다 관련 파일을 commit하고 현재 branch를 push하는 규칙 적용
 - Spring, Prediction, Infrastructure, Scripts와 Docs의 최상위 책임 경계 문서화
 - monorepo와 최상위 디렉터리 선택 근거를 ADR-0002로 기록
+- Docker CLI·Compose 설치, Linux Engine daemon 연결과 기본 container 실행 환경 검증
 
 ## 아직 구현되지 않은 항목
 
@@ -84,6 +87,8 @@ M0의 프로젝트 목적, 작업 규칙, 상태·로드맵·아키텍처·ADR �
 - `docs/PROJECT_CONTEXT.md`: UTC 저장 기준을 사용자 확정 상태로 동기화
 - `docs/architecture/SYSTEM_OVERVIEW.md`: 첫 ML 목표의 낡은 `후보` 표현 제거
 - `docs/ROADMAP.md`: M0 상태를 `DONE`으로 전환
+- `docs/PROJECT_STATUS.md`: M1 환경 사전검증 결과와 다음 단일 작업 기록
+- `docs/ROADMAP.md`: M1 상태를 `IN_PROGRESS`로 전환
 
 ## 추후 `.gitignore` 점검 시점
 
@@ -127,6 +132,10 @@ M0의 프로젝트 목적, 작업 규칙, 상태·로드맵·아키텍처·ADR �
 | 2026-07-24 | Markdown 내부 링크와 민감정보 패턴 | 깨진 링크 0건, secret-like pattern 0건 |
 | 2026-07-24 | 확정 기술 기준 문서 일치 | UTC와 다음 5분 방향 분류를 확정 상태로 동기화 |
 | 2026-07-24 | staged whitespace 재검증 | README 5개의 EOF 빈 줄 제거 후 `diff --cached --check` 통과 |
+| 2026-08-03 | Docker CLI와 Compose 설치·version | Docker CLI `29.6.2`, Docker Compose `v5.3.1` 확인 |
+| 2026-08-03 | Docker Engine daemon과 Linux mode | Docker Desktop `4.84.0`, Engine `29.6.2`, `linux/x86_64`, `overlayfs` 확인 |
+| 2026-08-03 | 기본 Engine·Compose 명령 | `docker ps`, `docker compose ls` 종료 코드 0; 실행 중 container와 Compose project 0개 |
+| 2026-08-03 | `hello-world` end-to-end 실행 | Linux `amd64` image 확인, 사용자 실행 종료 코드 0, `--rm` 이후 잔여 container 0개 |
 
 ## 알려진 실패와 blocker
 
@@ -141,9 +150,9 @@ M0의 프로젝트 목적, 작업 규칙, 상태·로드맵·아키텍처·ADR �
 
 ## 다음 작업
 
-M1의 첫 단일 TODO로 Docker Engine과 Docker Compose의 설치 version, daemon 실행 여부와
-기본 명령 사용 가능 여부를 확인한다. 이 검증을 통과하기 전에는 Compose 파일을 작성하지 않는다.
+M1의 다음 단일 TODO로 PostgreSQL service 하나의 image, port, environment, named volume과
+healthcheck 책임을 학습한 뒤 `infra/`에 첫 Compose 설정을 사용자가 직접 작성한다.
 
 ## 다음 채팅 시작 문장
 
-`M0를 완료했어. M1 첫 TODO인 Docker Engine과 Docker Compose 실행 환경 검증을 명령별 이유와 성공·실패 기준까지 안내해줘.`
+`M1 Docker 환경 사전검증을 완료했어. 다음 TODO로 PostgreSQL 단일 service의 Docker Compose 구성을 내가 직접 작성할 수 있게 image, port, environment, named volume과 healthcheck를 한 항목씩 설명해줘.`

@@ -13,7 +13,7 @@
 | ID | 마일스톤 | 상태 | 권장 branch |
 |---|---|---|---|
 | M0 | Repository 초기화와 설계 기준 | DONE | `docs/project-foundation` |
-| M1 | Docker Compose 인프라 | NOT_STARTED | `infra/local-compose` |
+| M1 | Docker Compose 인프라 | IN_PROGRESS | `infra/local-compose` |
 | M2 | Spring Boot 기본 구성 | NOT_STARTED | `feat/spring-bootstrap` |
 | M3 | PostgreSQL과 Stock 도메인 | NOT_STARTED | `feat/stock-domain` |
 | M4 | Kafka 기본과 FakeMarketDataGenerator | NOT_STARTED | `feat/fake-market-producer` |
