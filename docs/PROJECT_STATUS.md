@@ -2,7 +2,7 @@
 
 ## 문서 메타데이터
 
-- 마지막 업데이트: 2026-08-03
+- 마지막 업데이트: 2026-08-04
 - 최근 완료 마일스톤: M0. Repository 초기화와 설계 기준
 - 현재 마일스톤: M1. Docker Compose 인프라
 - 상태: IN_PROGRESS
@@ -20,6 +20,10 @@ Docker Compose의 version, Linux daemon 연결, 기본 Engine·Compose 명령과
 실행을 검증했다. 다음 작업은 `infra/`에서 PostgreSQL 단일 service의 image, port,
 environment, named volume과 healthcheck 구성을 학습하고 첫 Compose 설정을 작성하는 것이다.
 
+구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
+중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
+network 경계를 문서화했다.
+
 ## 완료된 작업
 
 - 프로젝트 목적, 학습 목표와 비목표 정리
@@ -35,6 +39,7 @@ environment, named volume과 healthcheck 구성을 학습하고 첫 Compose 설�
 - Spring, Prediction, Infrastructure, Scripts와 Docs의 최상위 책임 경계 문서화
 - monorepo와 최상위 디렉터리 선택 근거를 ADR-0002로 기록
 - Docker CLI·Compose 설치, Linux Engine daemon 연결과 기본 container 실행 환경 검증
+- 인프라, 백엔드, 데이터 파이프라인, 데이터 저장소와 ML의 개념 학습 문서 체계 구성
 
 ## 아직 구현되지 않은 항목
 
@@ -89,6 +94,9 @@ environment, named volume과 healthcheck 구성을 학습하고 첫 Compose 설�
 - `docs/ROADMAP.md`: M0 상태를 `DONE`으로 전환
 - `docs/PROJECT_STATUS.md`: M1 환경 사전검증 결과와 다음 단일 작업 기록
 - `docs/ROADMAP.md`: M1 상태를 `IN_PROGRESS`로 전환
+- `docs/learning/README.md`: 다섯 개념 category와 질문 기록·중복 방지 규칙
+- `docs/learning/infrastructure.md`: Docker Compose `ports` 개념과 프로젝트 적용 기록
+- `AGENTS.md`: 구현·개념 전용 채팅의 지속적인 학습 문서 갱신 규칙
 
 ## 추후 `.gitignore` 점검 시점
 
@@ -136,6 +144,8 @@ environment, named volume과 healthcheck 구성을 학습하고 첫 Compose 설�
 | 2026-08-03 | Docker Engine daemon과 Linux mode | Docker Desktop `4.84.0`, Engine `29.6.2`, `linux/x86_64`, `overlayfs` 확인 |
 | 2026-08-03 | 기본 Engine·Compose 명령 | `docker ps`, `docker compose ls` 종료 코드 0; 실행 중 container와 Compose project 0개 |
 | 2026-08-03 | `hello-world` end-to-end 실행 | Linux `amd64` image 확인, 사용자 실행 종료 코드 0, `--rm` 이후 잔여 container 0개 |
+| 2026-08-04 | 개념 학습 문서 구조 | 넓은 category 5개, 문서 지도, 중복 방지와 개념 전용 채팅 규칙 구성 |
+| 2026-08-04 | 첫 인프라 개념 기록 | Compose host/container port, service DNS, loopback binding과 readiness 구분 문서화 |
 
 ## 알려진 실패와 blocker
 

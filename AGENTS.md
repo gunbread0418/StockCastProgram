@@ -39,6 +39,9 @@
 - 설명, 진단, 리뷰 요청은 기본적으로 읽기 전용이다.
 - 사용자가 구현을 허가한 작업에서는 관련 테스트와 상태 문서 동기화를 작업 범위에 포함한다.
 - 기존 사용자 변경과 관련 없는 변경을 보존한다.
+- StockCastProgram의 개념 질문은 아래 `Concept learning documentation` 규칙에 따른
+  `docs/learning/` 갱신을 지속적으로 허가한 것으로 본다. 이 예외는 구현 source, 설정,
+  상태·로드맵 문서의 변경 권한까지 확장하지 않는다.
 - 사용자는 검증을 통과한 commit 단위 작업의 관련 파일 stage, commit과 현재 branch push를
   지속적으로 허가했다. 아래 `Git and security`의 자동화 조건과 중단 조건을 따른다.
 - branch 생성·전환, remote 생성·변경, tag, PR, merge와 force push는 사용자가 명시적으로
@@ -72,6 +75,27 @@
 - 실행 명령에는 실행 위치, 사전 조건, 성공 출력과 실패 출력의 의미를 함께 안내한다.
 
 사용자가 전체 구현을 명시적으로 요구하지 않는 한 프로젝트 전체 코드를 한 번에 제공하지 않는다.
+
+## Concept learning documentation
+
+- 구현 채팅과 별도의 개념 질문 채팅 모두 `docs/learning/README.md`와 관련 category 문서를 먼저
+  읽고 답변한다.
+- 개념 질문은 `infrastructure`, `backend`, `data-pipeline`, `data-storage`, `machine-learning`의
+  다섯 넓은 category 중 가장 가까운 한 곳에 기록한다.
+- 기술, 명령 또는 질문 하나마다 새 파일을 만들지 않는다. 기존 다섯 category로 분류하기 어려운
+  내용이 반복될 때만 새 category의 필요성과 trade-off를 사용자에게 먼저 설명한다.
+- 기존 항목을 검색한 뒤 같은 개념이면 새 항목을 중복 생성하지 않고 질문, 설명 또는 검증 근거를
+  기존 항목에 보강한다. 여러 category와 관련되면 주 category에 기록하고 나머지는 link만 둔다.
+- 기록은 대화 전문이 아니라 질문, 핵심 답변, 프로젝트 연결, 구분할 개념과 대안, 흔한 오해,
+  확인 방법과 면접 포인트를 재사용 가능한 형태로 정리한다.
+- 구현 도중 개념 질문이 나오면 현재 TODO를 임의로 진행하지 않고 개념을 답변·기록한 뒤 같은
+  구현 단계로 돌아간다.
+- 개념 전용 채팅에서는 사용자가 별도로 요청하지 않는 한 구현 파일, `PROJECT_STATUS.md`,
+  `ROADMAP.md`와 ADR을 수정하지 않는다. category 구조나 운영 규칙 자체가 바뀔 때만 문서 지도를
+  함께 동기화한다.
+- 개념 문서 변경은 Markdown link, UTF-8, EOF 개행, 중복과 민감정보를 검증한 뒤 기존 Git 규칙에
+  따라 관련 문서만 atomic commit하고 현재 branch에 push한다.
+- 비밀번호, token, API key, 인증 header, 실제 `.env` 값과 개인정보는 학습 문서에 기록하지 않는다.
 
 ### Ignore maintenance
 
@@ -131,6 +155,8 @@
 읽기 전용 설명이나 리뷰 요청에서는 사용자가 동기화를 명시적으로 요청하지 않는 한 문서를 수정하지 않는다.
 사용자가 Codex 밖에서 파일을 변경했다면 실제 파일과 Git 상태를 먼저 검사하고, 읽기 전용 요청이면
 문서 갱신 전 권한을 확인한다.
+개념 학습 문서만 갱신하고 구현·마일스톤 상태가 변하지 않았다면 `PROJECT_STATUS.md`와
+`ROADMAP.md`는 수정하지 않는다.
 
 ## User action reminders
 
