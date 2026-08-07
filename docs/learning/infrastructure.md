@@ -113,3 +113,99 @@ docker compose --env-file .\.env -f .\infra\compose.yaml port postgres 5432
 
 답변 keyword: service DNS, `postgres:5432`, host loopback, published port, network namespace,
 container IP 대신 service name.
+
+## PostgreSQL Compose의 `environment`
+
+- 기록일: 2026-08-07
+- 질문: Compose의 `environment`에서 PostgreSQL 초기화 변수와 `TZ`는 어떤 역할을 하며,
+  `${VAR:?message}` 형식은 왜 사용하는가?
+
+### 핵심 답변
+
+Compose의 `environment`는 host나 `--env-file`에서 치환한 값을 container process의 환경변수로
+전달한다. 현재 설정은 값 자체를 Compose 파일에 고정하지 않고 다음 네 항목을 명시적으로 전달한다.
+
+```yaml
+environment:
+  POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB is required}"
+  POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER is required}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+  TZ: "${TZ:?TZ is required}"
+```
+
+`${VAR:?message}`는 `VAR`가 설정되지 않았거나 빈 문자열이면 Compose가 설정 해석 단계에서
+`message`와 함께 실패하게 한다. 잘못된 기본값으로 container를 시작하는 것보다 누락을 일찍
+발견할 수 있다. `.env.example`은 변수 이름과 공개 가능한 예시만 제공하고 실제 local 값은 Git에서
+제외된 `.env`에 둔다. 자세한 치환 형식은 [Docker Compose variable interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/)을
+기준으로 한다.
+
+### 각 변수의 책임
+
+| 변수 | 책임 | 생략하거나 잘못 설정했을 때 |
+|---|---|---|
+| `POSTGRES_DB` | 첫 초기화 때 만들 기본 database 이름 | 생략하면 `POSTGRES_USER`와 같은 이름의 database가 생성되며 application 접속 설정과 어긋날 수 있음 |
+| `POSTGRES_USER` | 첫 초기화 때 만들 bootstrap superuser 이름 | 생략하면 `postgres`가 사용되며 local 학습용 계정 이름을 명시적으로 통제하지 못함 |
+| `POSTGRES_PASSWORD` | 위 superuser의 초기 password | 공식 image에서 기본적으로 필수이며 누락·빈 값이면 초기화가 실패함 |
+| `TZ` | `initdb`가 database cluster의 기본 `TimeZone`을 정할 때 사용할 시간대 | service마다 시간대가 달라져 log와 timestamp 해석이 혼동될 수 있음 |
+
+`POSTGRES_USER`는 Linux의 `postgres` 운영체제 계정과 다른 PostgreSQL role이다. 또한 현재 M1의
+단일 local service에서는 간단히 bootstrap superuser를 사용하지만, application 구현 단계에서는
+최소 권한의 별도 role을 migration 또는 초기화 절차로 만드는 것이 더 안전하다.
+
+### 초기화 변수의 수명 주기
+
+`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`는 빈 data directory를 처음 초기화할 때만
+database cluster에 반영된다. named volume에 기존 cluster가 있으면 Compose 값을 바꿔 container를
+재시작해도 기존 database, role 또는 password가 자동 변경되지 않는다. 이 동작은 data를 보존하는
+보호 장치이므로 설정 변경을 적용하려고 volume을 임의로 삭제해서는 안 된다. 변수별 공식 동작은
+[PostgreSQL Docker Official Image](https://github.com/docker-library/docs/blob/master/postgres/README.md)의
+environment variables 설명을 기준으로 한다.
+
+`TZ=UTC`는 PostgreSQL 18의 `initdb`가 생성할 cluster의 기본 시간대를 UTC로 선택하게 한다. 이후
+session별 `SET TIME ZONE`, database·role 설정 또는 `postgresql.conf`가 다른 값을 지정할 수 있으므로
+실행 시 `SHOW TIME ZONE`으로 실제 값을 확인해야 한다. `timestamp with time zone`도 출력은 현재
+session의 `TimeZone` 영향을 받으므로 `TZ` 한 줄만으로 애플리케이션 시간 규칙 전체가 보장되지는 않는다.
+PostgreSQL 18의 [`initdb` 환경변수 문서](https://www.postgresql.org/docs/18/app-initdb.html)가 `TZ`를
+새 database cluster의 기본 시간대로 정의한다.
+
+### 대안과 현재 선택
+
+- Compose mapping syntax: 변수별 책임이 눈에 보이고 필수 값 검사를 붙일 수 있어 현재 선택한다.
+- service의 `env_file`: 여러 값을 한꺼번에 전달하기 편하지만 어떤 변수가 container 계약인지 Compose
+  파일에서 덜 명확하고 필수 값 검사를 개별적으로 표현하기 어렵다.
+- Docker secrets와 `POSTGRES_PASSWORD_FILE`: production에서 password 노출 범위를 줄이는 대안이다.
+  현재는 local Compose 학습 단계라 `.env`를 사용하고 production 배포 경계가 생길 때 전환한다.
+- Compose 파일에 실제 password 직접 작성: 간단하지만 Git 유출 위험이 있어 사용하지 않는다.
+
+### 흔한 오해
+
+- `.env`의 변수가 자동으로 container에 모두 전달된다: `.env`는 먼저 Compose 치환 입력이며,
+  container에 넣으려면 `environment` 또는 `env_file` 연결이 필요하다.
+- `POSTGRES_PASSWORD`는 application client의 `PGPASSWORD`와 같다: 전자는 첫 초기화의 server
+  superuser password이며 후자는 `psql` 같은 client의 접속 기본값이다.
+- 환경변수를 바꾸고 재시작하면 기존 database 설정도 바뀐다: 초기화가 끝난 named volume에는
+  자동 반영되지 않는다.
+- `docker compose config` 성공이면 database가 생성됐다: 이 명령은 치환된 Compose model만
+  검증하며 image 실행, 초기화와 실제 접속은 확인하지 않는다.
+- `config` 출력은 항상 공유해도 안전하다: 치환 후 password가 평문으로 보일 수 있으므로 실제
+  `.env`를 사용한 출력은 채팅, 문서 또는 commit에 남기지 않는다.
+
+### 확인 방법
+
+공개 가능한 예시 값으로 구조와 치환을 확인한다.
+
+```powershell
+docker compose --env-file .\.env.example -f .\infra\compose.yaml config
+```
+
+성공 기준은 종료 코드 `0`이고 `postgres.environment` 아래에 네 변수가 빈 값 없이 나타나는 것이다.
+실패 기준은 required variable 오류, YAML parse 오류 또는 예상하지 않은 값이다. 이 검증은 container를
+시작하지 않으므로 실제 초기화 성공 여부는 named volume과 healthcheck 단계 이후 별도로 확인한다.
+
+### 면접 질문
+
+질문: PostgreSQL container의 `POSTGRES_PASSWORD`를 바꾼 뒤 재시작했는데 기존 password가 바뀌지
+않는 이유는 무엇인가?
+
+답변 keyword: entrypoint, empty data directory, first initialization, named volume, persisted cluster,
+환경변수 재치환과 database 상태 변경의 구분, 명시적 role/password 변경 절차.
