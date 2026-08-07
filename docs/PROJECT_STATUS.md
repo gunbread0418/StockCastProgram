@@ -2,7 +2,7 @@
 
 ## 문서 메타데이터
 
-- 마지막 업데이트: 2026-08-04
+- 마지막 업데이트: 2026-08-07
 - 최근 완료 마일스톤: M0. Repository 초기화와 설계 기준
 - 현재 마일스톤: M1. Docker Compose 인프라
 - 상태: IN_PROGRESS
@@ -13,12 +13,14 @@
 M0의 프로젝트 목적, 작업 규칙, 상태·로드맵·아키텍처·ADR 문서, `.gitignore`,
 `.env.example`과 최상위 디렉터리 정책을 작성하고 검증했다. `backend-spring/`,
 `prediction-service/`, `infra/`, `scripts/`, `docs/`는 각 README로 책임과 제외 범위를
-문서화해 Git에서 추적한다. 애플리케이션과 인프라 코드는 아직 구현하지 않았다.
+문서화해 Git에서 추적한다. 애플리케이션 source는 아직 없으며 인프라는 PostgreSQL Compose
+service부터 구현을 시작했다.
 
-M1의 첫 TODO인 Docker 실행 환경 사전검증을 완료했다. Docker Desktop, Docker Engine과
-Docker Compose의 version, Linux daemon 연결, 기본 Engine·Compose 명령과 `hello-world`
-실행을 검증했다. 다음 작업은 `infra/`에서 PostgreSQL 단일 service의 image, port,
-environment, named volume과 healthcheck 구성을 학습하고 첫 Compose 설정을 작성하는 것이다.
+M1의 Docker 실행 환경 사전검증에 이어 PostgreSQL 단일 service의 Compose 구성을 완료했다.
+`infra/compose.yaml`에 `postgres:18.4-bookworm`, loopback host port, 필수 환경변수, PostgreSQL 18
+경로의 named volume과 `pg_isready` healthcheck를 작성했다. Compose 설정 해석, `healthy` 전환,
+비밀번호를 사용한 TCP 접속, database·사용자·UTC와 container 재생성 후 data 보존을 검증했다.
+다음 작업은 Redis 단일 service의 Compose 구성을 같은 방식으로 학습하고 검증하는 것이다.
 
 구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
 중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
@@ -40,10 +42,12 @@ network 경계를 문서화했다.
 - monorepo와 최상위 디렉터리 선택 근거를 ADR-0002로 기록
 - Docker CLI·Compose 설치, Linux Engine daemon 연결과 기본 container 실행 환경 검증
 - 인프라, 백엔드, 데이터 파이프라인, 데이터 저장소와 ML의 개념 학습 문서 체계 구성
+- PostgreSQL 단일 Compose service의 image, port, environment, named volume과 healthcheck 구현
+- PostgreSQL 실제 접속, UTC와 container 재생성 후 named volume data 보존 검증
 
 ## 아직 구현되지 않은 항목
 
-- Docker Compose와 외부 의존 service
+- Redis, MongoDB, Kafka와 Kafka UI의 Compose service
 - Spring Boot source와 Gradle build
 - FastAPI source와 Python package
 - DB schema와 migration
@@ -67,7 +71,8 @@ network 경계를 문서화했다.
 - 첫 commit은 `5364609` (`chore: initialize project foundation`)이다.
 - `.env.example` commit은 `aaeff71` (`chore: add local environment template`)이다.
 - Git 작성자 이메일의 GitHub 계정 연결을 사용자가 확인했다.
-- 애플리케이션과 인프라 실행 파일은 아직 없다.
+- 첫 인프라 실행 파일인 `infra/compose.yaml`에는 PostgreSQL service가 구현되어 있다.
+- Spring Boot와 FastAPI 애플리케이션 source는 아직 없다.
 - 최상위 component 디렉터리는 빈 디렉터리용 `.gitkeep`이 아니라 책임 README로 추적한다.
 
 ## 최상위 디렉터리 정책
@@ -97,12 +102,15 @@ network 경계를 문서화했다.
 - `docs/learning/README.md`: 다섯 개념 category와 질문 기록·중복 방지 규칙
 - `docs/learning/infrastructure.md`: Docker Compose `ports` 개념과 프로젝트 적용 기록
 - `AGENTS.md`: 구현·개념 전용 채팅의 지속적인 학습 문서 갱신 규칙
+- `infra/compose.yaml`: PostgreSQL image, loopback port, 필수 환경변수, named volume과 healthcheck
+- `docs/learning/infrastructure.md`: PostgreSQL environment, volume, healthcheck의 실제 검증 결과
+- `docs/TROUBLESHOOTING.md`: PowerShell에서 `psql` SQL이 잘린 `ERR-004`의 해결과 검증
 
 ## 추후 `.gitignore` 점검 시점
 
 | 시점 | 확인할 항목 | 지금 미리 넣지 않은 이유 |
 |---|---|---|
-| M1 Docker Compose | repository 내부 bind mount data 경로 | named volume을 사용하면 제외할 로컬 경로가 없음 |
+| M1의 남은 Compose service | repository 내부 bind mount data 경로 | PostgreSQL은 named volume이라 제외할 로컬 경로가 없으며 새 service 추가 때 다시 확인 |
 | M10 model pipeline | dataset, model artifact, `*.pkl`, `*.joblib` 정책 | 재현성과 artifact 보존 위치를 먼저 결정해야 함 |
 | M13 선택 UI | `node_modules/`와 선택한 frontend tool cache | 현재 Node 기반 UI가 존재하지 않음 |
 | 모든 마일스톤 | 새 build tool의 cache, log와 generated output | 실제 경로를 확인한 뒤 좁은 규칙으로 추가해야 함 |
@@ -146,6 +154,11 @@ network 경계를 문서화했다.
 | 2026-08-03 | `hello-world` end-to-end 실행 | Linux `amd64` image 확인, 사용자 실행 종료 코드 0, `--rm` 이후 잔여 container 0개 |
 | 2026-08-04 | 개념 학습 문서 구조 | 넓은 category 5개, 문서 지도, 중복 방지와 개념 전용 채팅 규칙 구성 |
 | 2026-08-04 | 첫 인프라 개념 기록 | Compose host/container port, service DNS, loopback binding과 readiness 구분 문서화 |
+| 2026-08-07 | PostgreSQL Compose 설정 | `.env.example`과 local `.env` 모두 `docker compose config --quiet` 종료 코드 0 |
+| 2026-08-07 | PostgreSQL 실행과 healthcheck | `up -d --wait` 성공, `postgres:18.4-bookworm` container가 `healthy`, `127.0.0.1:5432` 확인 |
+| 2026-08-07 | PostgreSQL 실제 접속 | 비밀번호를 사용한 TCP 접속 성공, database·사용자 `stockcast`, `TimeZone=UTC` 확인 |
+| 2026-08-07 | PostgreSQL data 지속성 | 표식 행 생성 후 `down`·재생성, 같은 행 조회 성공, 테스트 table 삭제 확인 |
+| 2026-08-07 | local secret과 저장 경로 | `.env`는 Git ignore, `.env.example`은 추적 대상, named volume은 `local` driver로 확인 |
 
 ## 알려진 실패와 blocker
 
@@ -156,13 +169,14 @@ network 경계를 문서화했다.
   해결했으며 자세한 과정은 `docs/TROUBLESHOOTING.md`에 기록함
 - README 5개의 EOF 빈 줄 때문에 staged diff 검증이 처음 실패했으나 빈 줄 제거 후 통과했으며
   `ERR-003`으로 기록함
+- PowerShell, `compose exec`와 `sh -c`의 중첩 따옴표 때문에 `psql -c` SQL이 잘린 오류는
+  표준 입력과 `exec -T` 방식으로 해결했으며 `ERR-004`로 기록함
 - 샌드박스의 `.git` 쓰기와 네트워크 제한은 승인된 권한으로 commit과 GitHub 접근을 수행함
 
 ## 다음 작업
 
-M1의 다음 단일 TODO로 PostgreSQL service 하나의 image, port, environment, named volume과
-healthcheck 책임을 학습한 뒤 `infra/`에 첫 Compose 설정을 사용자가 직접 작성한다.
+M1의 다음 단일 TODO로 Redis service의 image부터 Compose 구성을 한 항목씩 학습하고 작성한다.
 
 ## 다음 채팅 시작 문장
 
-`M1 Docker 환경 사전검증을 완료했어. 다음 TODO로 PostgreSQL 단일 service의 Docker Compose 구성을 내가 직접 작성할 수 있게 image, port, environment, named volume과 healthcheck를 한 항목씩 설명해줘.`
+`M1의 PostgreSQL 단일 Compose service 검증을 완료했어. 다음 TODO로 Redis 단일 service의 Compose 구성을 내가 직접 작성할 수 있게 image부터 한 항목씩 설명해줘.`

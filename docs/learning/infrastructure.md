@@ -199,8 +199,12 @@ docker compose --env-file .\.env.example -f .\infra\compose.yaml config
 ```
 
 성공 기준은 종료 코드 `0`이고 `postgres.environment` 아래에 네 변수가 빈 값 없이 나타나는 것이다.
-실패 기준은 required variable 오류, YAML parse 오류 또는 예상하지 않은 값이다. 이 검증은 container를
-시작하지 않으므로 실제 초기화 성공 여부는 named volume과 healthcheck 단계 이후 별도로 확인한다.
+실패 기준은 required variable 오류, YAML parse 오류 또는 예상하지 않은 값이다.
+
+실제 local `.env`로도 `docker compose config --quiet`가 종료 코드 `0`으로 끝났고, container를 처음
+초기화한 뒤 비밀번호를 사용한 TCP 접속에 성공했다. SQL로 확인한 database와 사용자는 각각
+`.env`의 `POSTGRES_DB`, `POSTGRES_USER`와 일치했고 `SHOW TIME ZONE`은 `UTC`였다. 실제 비밀번호는
+명령 출력이나 문서에 남기지 않았다.
 
 ### 면접 질문
 
@@ -213,8 +217,8 @@ docker compose --env-file .\.env.example -f .\infra\compose.yaml config
 ## Docker volume과 PostgreSQL Compose의 named volume
 
 - 기록일: 2026-08-07
-- 현재 상태: `infra/compose.yaml`에 작성했고 `.env.example`을 사용한 Compose 설정 검사를 통과함.
-  실제 volume 생성과 데이터 유지 여부는 아직 확인하지 않음
+- 현재 상태: `infra/compose.yaml` 작성, Compose 설정 검사, 실제 volume 생성과 container 재생성 후
+  data 유지 검증을 모두 통과함
 - 질문: PostgreSQL 18의 data를 container 재생성 뒤에도 보존하려면 named volume을 어디에
   선언하고 어느 container 경로에 mount해야 하며, top-level `volumes`는 왜 필요한가?
 
@@ -339,8 +343,13 @@ docker compose --env-file .\.env.example -f .\infra\compose.yaml config
 
 명령은 종료 코드 `0`으로 끝났고 Compose가 해석한 설정에서 `type: volume`,
 `source: postgres-data`, `target: /var/lib/postgresql`, `name: stockcast_postgres-data`를 확인했다.
-이는 YAML 구조, named volume 선언과 service 연결이 올바르다는 뜻이다. 이 명령은 volume을 만들거나
-data 유지 여부를 확인하지 않으므로 실제 지속성 검증은 healthcheck를 추가한 뒤 수행한다.
+이는 YAML 구조, named volume 선언과 service 연결이 올바르다는 뜻이다.
+
+실제 local `.env`로 처음 실행했을 때 `stockcast_postgres-data`가 생성됐고 `local` volume driver를
+사용하는 것을 확인했다. 검증용 table에 `id=1`을 저장한 다음 `docker compose down`으로 container와
+network만 제거했다. Volume이 남은 상태에서 새 container를 만들었고 `healthy` 전환 뒤 같은 행이
+조회됐다. 검증용 table을 삭제한 뒤 존재하지 않는 것도 다시 확인했다. 따라서 일반 `down`과
+container 재생성 경계에서는 PostgreSQL data가 named volume에 보존된다는 것을 실제로 검증했다.
 
 ### 면접 질문
 
@@ -353,7 +362,7 @@ version-specific `PGDATA`, parent `VOLUME`, major upgrade layout, persistence와
 ## PostgreSQL Compose의 `healthcheck`
 
 - 기록일: 2026-08-07
-- 현재 상태: 작성할 구조와 검증 기준을 확정했으며 `infra/compose.yaml`에는 아직 작성하지 않음
+- 현재 상태: `infra/compose.yaml`에 작성했고 Compose 설정 검사와 실제 `healthy` 전환을 검증함
 - 질문: PostgreSQL container가 실행 중이라는 사실과 실제로 연결을 받을 준비가 됐다는 상태를
   어떻게 구분하고, Compose가 이를 어떤 주기로 확인하게 하는가?
 
@@ -364,7 +373,7 @@ service 상태를 `starting`, `healthy`, `unhealthy`로 판단하게 하는 설�
 살아 있다는 사실만으로 PostgreSQL 초기화가 끝났다고 볼 수 없으므로, PostgreSQL 공식 도구인
 `pg_isready`로 TCP 연결을 받을 준비가 됐는지 확인한다.
 
-현재 단계에서 사용자가 `services.postgres` 아래에 작성할 구조는 다음과 같다.
+현재 `services.postgres` 아래에 작성한 구조는 다음과 같다.
 
 ```yaml
 healthcheck:
@@ -377,8 +386,8 @@ healthcheck:
   start_period: 20s
 ```
 
-기존 `image`, `ports`, `environment`, `volumes`와 같은 service 깊이에 `healthcheck`를 둔다. 이
-예시는 아직 작성 전이며 PostgreSQL service 전체를 다시 적은 완성본이 아니다.
+기존 `image`, `ports`, `environment`, `volumes`와 같은 service 깊이에 `healthcheck`를 둔다.
+위 코드는 실제 파일에서 해당 부분만 발췌한 것이므로 PostgreSQL service 전체를 다시 적은 예시는 아니다.
 
 ### 검사 명령이 실행되는 흐름
 
@@ -453,10 +462,10 @@ Docker healthcheck는 `0`을 성공으로 보고 나머지를 실패로 본다.
 [Compose interpolation 문서](https://docs.docker.com/reference/compose-file/interpolation/)는 `$$`가
 Compose 치환을 막고 literal `$`를 남기는 표기라고 설명한다.
 
-### 작성 후 확인 방법
+### 확인 방법과 검증 결과
 
-사용자가 `healthcheck`를 작성한 뒤 저장소 root에서 먼저 정적 검사를 실행한다. 정적 검사는
-container를 시작하지 않고 Compose가 설정 구조와 값을 올바르게 해석하는지 확인하는 검사다.
+저장소 root에서 먼저 정적 검사를 실행했다. 정적 검사는 container를 시작하지 않고 Compose가
+설정 구조와 값을 올바르게 해석하는지 확인하는 검사다.
 
 ```powershell
 docker compose --env-file .\.env.example -f .\infra\compose.yaml config
@@ -466,9 +475,14 @@ docker compose --env-file .\.env.example -f .\infra\compose.yaml config
 나타나는 것이다. 특히 검사 명령에 container 환경변수를 위한 달러 기호가 보존되어야 한다. 실패
 기준은 YAML 들여쓰기 오류, 잘못된 duration 형식 또는 Compose가 변수를 빈 문자열로 치환하는 경우다.
 
-이 검사는 실제 상태 전환을 확인하지 않는다. 설정 검사를 통과한 뒤 local `.env`로 container를
-실행해 `starting -> healthy` 전환, `pg_isready`, 실제 SQL 접속과 named volume의 data 유지를 차례로
-검증해야 PostgreSQL 단일 service의 실행 검증이 끝난다.
+정적 검사는 실제 상태 전환을 확인하지 않는다. 이어서 local `.env`로
+`docker compose up -d --wait --wait-timeout 120 postgres`를 실행했고 container가 `healthy`로
+전환됐다. `docker compose ps`에서 `127.0.0.1:5432` 포트 전달도 확인했다.
+
+Healthcheck와 별도로 비밀번호를 사용한 TCP `psql` 접속, database·사용자 일치와 `UTC`를 확인했다.
+또한 container를 제거하고 새로 만든 뒤에도 named volume의 검증용 행이 남는 것을 확인하고 해당
+table을 삭제했다. 이 결과로 PostgreSQL 단일 service의 설정, readiness, 실제 접속과 data 지속성
+검증이 모두 끝났다.
 
 ### 면접 질문
 
