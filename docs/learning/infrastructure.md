@@ -209,3 +209,117 @@ docker compose --env-file .\.env.example -f .\infra\compose.yaml config
 
 답변 keyword: entrypoint, empty data directory, first initialization, named volume, persisted cluster,
 환경변수 재치환과 database 상태 변경의 구분, 명시적 role/password 변경 절차.
+
+## PostgreSQL Compose의 named volume
+
+- 기록일: 2026-08-07
+- 현재 상태: 개념 설명과 작성 계획만 확정했으며 `infra/compose.yaml`에는 아직 작성하지 않음
+- 질문: PostgreSQL 18의 data를 container 재생성 뒤에도 보존하려면 named volume을 어디에
+  선언하고 어느 container 경로에 mount해야 하는가?
+
+### 핵심 답변
+
+Container의 writable layer는 container 수명에 묶이므로 database 기준 데이터를 보관하는 위치로
+사용하면 안 된다. Compose가 관리하는 named volume을 PostgreSQL image의 persistent storage 경계에
+mount하면 container를 삭제하고 다시 만들어도 volume의 database 파일을 재사용할 수 있다.
+
+이 프로젝트에서 다음 단계에 사용자가 작성할 구조는 다음과 같다.
+
+```yaml
+services:
+  postgres:
+    # 기존 image, ports, environment
+    volumes:
+      - postgres-data:/var/lib/postgresql
+
+volumes:
+  postgres-data:
+```
+
+아직 작성 전인 예시이며, 기존 service 항목을 생략한 완성본이 아니다.
+
+### 같은 이름이 두 곳에 필요한 이유
+
+| 위치 | 표현 | 책임 |
+|---|---|---|
+| `services.postgres.volumes` | `postgres-data:/var/lib/postgresql` | 어떤 volume을 PostgreSQL container의 어느 경로에 mount할지 연결 |
+| top-level `volumes` | `postgres-data:` | Compose가 관리할 named volume resource를 선언 |
+
+왼쪽 `postgres-data`는 Compose model 안의 논리적 volume 이름이고 오른쪽 `/var/lib/postgresql`은
+container 내부 경로다. `.env.example`의 `COMPOSE_PROJECT_NAME=stockcast`를 사용할 때 Docker의
+실제 resource 이름은 일반적으로 project 이름으로 scope된 `stockcast_postgres-data`가 된다.
+별도의 `name`, `external`과 `driver`를 지정하지 않아 Compose의 project 격리와 Docker의 기본 local
+volume driver를 그대로 사용한다.
+
+### PostgreSQL 18에서 mount 경로가 중요한 이유
+
+PostgreSQL Docker Official Image는 18 이상부터 다음처럼 경로 정책을 변경했다.
+
+- `PGDATA`: `/var/lib/postgresql/18/docker`
+- image가 선언한 `VOLUME`: `/var/lib/postgresql`
+- Compose named volume target: `/var/lib/postgresql`
+
+major version별 data directory를 같은 상위 volume 아래에 둘 수 있게 해 `pg_upgrade --link` 같은
+upgrade 흐름을 지원하려는 구조다. 따라서 PostgreSQL 17 이하에서 흔히 보던
+`/var/lib/postgresql/data` 예시를 현재 `postgres:18.4-bookworm`에 그대로 복사하지 않는다.
+[PostgreSQL Docker Official Image의 `PGDATA` 설명](https://github.com/docker-library/docs/blob/master/postgres/README.md)이
+18 이상에서는 mount와 volume의 target을 `/var/lib/postgresql`로 지정하라고 안내한다.
+
+### 데이터 수명과 삭제 경계
+
+- `docker compose up`은 named volume이 없으면 만들고, 있으면 기존 volume을 재사용한다.
+- container stop, start와 일반적인 재생성은 named volume의 data를 제거하지 않는다.
+- `docker compose down`은 기본적으로 named volume을 남긴다.
+- `docker compose down -v`와 명시적인 `docker volume rm`은 volume data를 삭제할 수 있다.
+- named volume은 지속성 수단이지 backup이 아니다. 잘못된 SQL, corruption 또는 volume 삭제에
+  대비한 dump와 복구 검증은 별도 작업이다.
+
+PostgreSQL image의 초기화 환경변수가 최초 한 번만 적용되는 이유도 이 수명과 연결된다. 기존
+named volume이 재사용되면 entrypoint는 이미 존재하는 database cluster를 보존하고 다시 만들지 않는다.
+
+### 대안과 현재 선택
+
+- named volume: Docker가 host 저장 위치와 권한을 관리해 Windows·Docker Desktop에서 재현하기
+  쉽기 때문에 현재 local infrastructure에 사용한다.
+- bind mount: host의 정확한 폴더를 직접 보고 backup tool과 연결하기 쉽지만 Windows file sharing,
+  경로 차이와 권한 문제를 사용자가 관리해야 하므로 지금은 선택하지 않는다.
+- anonymous volume: 이름이 없어 재사용·식별·정리가 어려워 database 기준 저장소에 사용하지 않는다.
+- container writable layer: container 제거·재생성 때 data가 유실되므로 기준 저장소에 사용할 수 없다.
+- `tmpfs`: container가 중지되면 memory의 data가 사라지므로 지속되어야 하는 PostgreSQL data에
+  사용할 수 없다.
+
+Repository 내부 bind mount 경로를 만들지 않으므로 이번 단계에서 `.gitignore` 규칙을 추가할 필요가
+없다. local volume의 실제 database 파일도 Git 추적 대상이 아니다.
+
+### 흔한 오해
+
+- named volume은 container 내부에만 있다: container와 별도인 Docker Engine resource이며 mount를
+  통해 container가 사용한다.
+- `docker compose down`이면 database도 항상 삭제된다: 기본 `down`은 named volume을 보존하지만
+  `down -v`는 삭제한다.
+- named volume이면 backup이 필요 없다: 실수나 corruption까지 되돌려 주는 backup은 아니다.
+- `docker compose config` 성공이면 volume이 만들어졌다: config는 model의 선언과 참조만 검증하고
+  Docker resource는 `up` 시점에 생성한다.
+- PostgreSQL major version을 image tag에서 바꾸면 자동 upgrade된다: data format 호환성과 migration은
+  별도 절차이며 volume 보존만으로 major upgrade가 완료되지 않는다.
+
+### 작성 후 확인 방법
+
+사용자가 두 `volumes` 항목을 작성한 뒤 저장소 root에서 다음 명령을 실행한다.
+
+```powershell
+docker compose --env-file .\.env.example -f .\infra\compose.yaml config
+```
+
+성공 기준은 종료 코드 `0`이고 resolved config에 `type: volume`, `source: postgres-data`,
+`target: /var/lib/postgresql`과 top-level named volume이 함께 나타나는 것이다. 실패 기준은 YAML 들여쓰기
+오류, `undefined volume` 또는 target 경로가 `/var/lib/postgresql`과 다른 경우다. 이 명령은 volume을
+생성하거나 data 지속성을 실행 검증하지 않으며, 실제 persistence 검증은 healthcheck 추가 후 수행한다.
+
+### 면접 질문
+
+질문: PostgreSQL container에 named volume을 사용하는 이유와 PostgreSQL 18에서 mount target을
+`/var/lib/postgresql`로 정한 이유는 무엇인가?
+
+답변 keyword: container lifecycle, persistent Engine resource, Compose project scope, PostgreSQL 18
+version-specific `PGDATA`, parent `VOLUME`, major upgrade layout, persistence와 backup의 구분.
