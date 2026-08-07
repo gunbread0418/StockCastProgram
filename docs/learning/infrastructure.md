@@ -513,6 +513,51 @@ PowerShell의 SQL 문자열
   -> PostgreSQL server
 ```
 
+### 전달되는 것은 SQL 결과가 아니라 SQL text다
+
+PowerShell에서 작은따옴표 문자열을 작성하는 것만으로는 SQL이 실행되지 않는다. 다음 한 줄을 단독으로
+실행하면 PostgreSQL의 query 결과가 아니라 `SELECT 1;`이라는 text 자체가 출력된다.
+
+```powershell
+'SELECT 1;'
+```
+
+PowerShell에서 값만 적은 표현식도 값을 출력 pipeline에 내보낸다. 따라서 다음 두 형태는 이 문맥에서
+같은 SQL 문자열을 오른쪽으로 전달한다.
+
+```powershell
+'SELECT 1;' | docker compose ...
+```
+
+```powershell
+$sql = 'SELECT 1;'
+$sql | docker compose ...
+```
+
+왼쪽에서 만들어진 값은 SQL 실행 결과가 아니라 `System.String`, 즉 PowerShell의 문자열 객체다.
+PowerShell command끼리 연결할 때 pipeline은 객체를 전달하지만, 오른쪽이 `docker.exe` 같은 native
+command이면 PowerShell이 문자열을 text로 바꿔 그 process의 표준 입력에 쓴다.
+[Microsoft PowerShell pipeline 문서](https://learn.microsoft.com/en-gb/powershell/module/microsoft.powershell.core/about/about_pipelines)는
+`|`가 앞 command의 결과를 뒤 command의 입력으로 보내며 PowerShell 출력도 native command의 입력으로
+전달할 수 있다고 설명한다.
+
+그다음 입력과 결과는 서로 반대 방향으로 이동한다.
+
+```text
+입력 방향
+SQL 문자열 -> docker.exe의 표준 입력 -> container process의 표준 입력 -> psql -> PostgreSQL server
+
+결과 방향
+PostgreSQL server -> psql의 표준 출력 -> docker.exe의 표준 출력 -> PowerShell terminal
+```
+
+`docker compose exec -T`는 PowerShell에서 받은 표준 입력을 container process에 연결한다. Container의
+`sh`는 접속 password 환경변수를 설정한 `psql`을 실행하고, 별도로 입력을 읽지 않으므로 자신의 표준
+입력을 child process인 `psql`에 물려준다. `psql`에는 `-c`나 `-f`가 없으므로 그 표준 입력에서 SQL
+text를 읽은 뒤 처음으로 PostgreSQL server에 SQL 실행을 요청한다. 화면에 나타난 `CREATE TABLE`,
+`INSERT 0 1`과 조회 table은 왼쪽 문자열의 결과가 아니라 이 실행 뒤 오른쪽 명령이 표준 출력으로
+돌려준 결과다.
+
 검증용 table과 행을 만든 명령의 구조는 다음과 같다.
 
 ```powershell
