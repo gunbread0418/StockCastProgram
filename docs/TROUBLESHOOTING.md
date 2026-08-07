@@ -24,6 +24,7 @@
 | ERR-001 | 2026-07-20 | M0 | RESOLVED | `not a git repository` | Git 명령을 저장소 밖에서 실행함 |
 | ERR-002 | 2026-07-21 | M0 | RESOLVED | `.env.example` 경로를 찾지 못함 | 파일명 오기입으로 대상 파일이 없었음 |
 | ERR-003 | 2026-07-24 | M0 | RESOLVED | `new blank line at EOF` | README 끝에 개행이 두 개 있었음 |
+| ERR-004 | 2026-08-07 | M1 | RESOLVED | `psql`의 `CREATE` 구문이 끝에서 잘림 | 중첩된 셸에서 SQL 인자 경계가 사라짐 |
 
 ## ERR-001: 저장소를 찾지 못한 `git check-ignore`
 
@@ -68,6 +69,27 @@
   오류 없이 통과했다.
 - 재발 방지: 새 텍스트 파일은 마지막 줄 종료용 개행 하나만 남기고 commit 전
   `git diff --cached --check`를 항상 실행한다.
+
+## ERR-004: PowerShell과 `compose exec` 사이에서 잘린 SQL
+
+- 상태: `RESOLVED`
+- 실행 맥락: PowerShell에서 `docker compose exec postgres sh -c '...'`를 사용하고,
+  `sh -c` 문자열 안의 `psql -c "..."`로 여러 SQL 문장을 전달했다.
+- 증상: PostgreSQL이 `ERROR: syntax error at end of input`과 `LINE 1: CREATE`를 출력했다.
+  Docker가 이어서 표시한 Gordon 안내는 일반적인 후속 도움말이며 Compose 설정 오류를 뜻하지
+  않았다.
+- 원인: PowerShell, `docker compose exec`, 컨테이너의 `sh -c`를 차례로 거치면서 중첩된
+  따옴표의 SQL 인자 경계가 유지되지 않았다. 그 결과 `psql`의 `-c`에는 전체
+  `CREATE TABLE ...` 문장이 아니라 `CREATE`만 전달됐다.
+- 해결 과정: SQL을 `psql -c "..."`에 중첩하지 않고 PowerShell 파이프로 `psql`의 표준 입력에
+  전달했다. 파이프 입력을 안정적으로 받도록 `docker compose exec -T`로 가상 터미널 할당을
+  끄고, SQL 오류가 발생하면 즉시 실패하도록 `psql -v ON_ERROR_STOP=1`을 사용했다.
+- 검증 결과: 같은 PowerShell과 Compose 경로에서 `SELECT 1;`을 표준 입력으로 전달했을 때
+  `1`이 출력됐고 명령이 종료 코드 `0`으로 끝났다. 비밀번호 값은 명령 출력과 문서에 남기지
+  않았다.
+- 재발 방지: PowerShell에서 컨테이너의 `sh -c`를 거쳐 공백과 따옴표가 포함된 SQL을 실행할
+  때는 `psql -c`를 중첩하지 않는다. SQL을 파이프로 전달하고 `exec -T`,
+  `ON_ERROR_STOP=1`을 함께 사용한다.
 
 ## 새 오류 기록 템플릿
 
