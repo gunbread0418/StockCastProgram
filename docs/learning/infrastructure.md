@@ -349,3 +349,131 @@ data 유지 여부를 확인하지 않으므로 실제 지속성 검증은 healt
 
 답변 keyword: container lifecycle, persistent Engine resource, Compose project scope, PostgreSQL 18
 version-specific `PGDATA`, parent `VOLUME`, major upgrade layout, persistence와 backup의 구분.
+
+## PostgreSQL Compose의 `healthcheck`
+
+- 기록일: 2026-08-07
+- 현재 상태: 작성할 구조와 검증 기준을 확정했으며 `infra/compose.yaml`에는 아직 작성하지 않음
+- 질문: PostgreSQL container가 실행 중이라는 사실과 실제로 연결을 받을 준비가 됐다는 상태를
+  어떻게 구분하고, Compose가 이를 어떤 주기로 확인하게 하는가?
+
+### 핵심 답변
+
+`healthcheck`는 Docker가 container 안에서 검사 명령을 주기적으로 실행하고 종료 코드를 읽어
+service 상태를 `starting`, `healthy`, `unhealthy`로 판단하게 하는 설정이다. Container process가
+살아 있다는 사실만으로 PostgreSQL 초기화가 끝났다고 볼 수 없으므로, PostgreSQL 공식 도구인
+`pg_isready`로 TCP 연결을 받을 준비가 됐는지 확인한다.
+
+현재 단계에서 사용자가 `services.postgres` 아래에 작성할 구조는 다음과 같다.
+
+```yaml
+healthcheck:
+  test:
+    - CMD-SHELL
+    - pg_isready -h 127.0.0.1 -p 5432 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 20s
+```
+
+기존 `image`, `ports`, `environment`, `volumes`와 같은 service 깊이에 `healthcheck`를 둔다. 이
+예시는 아직 작성 전이며 PostgreSQL service 전체를 다시 적은 완성본이 아니다.
+
+### 검사 명령이 실행되는 흐름
+
+```text
+Docker healthcheck
+  -> PostgreSQL container의 /bin/sh
+  -> pg_isready
+  -> container 자신의 127.0.0.1:5432
+  -> 종료 코드로 healthy 또는 실패 판단
+```
+
+`127.0.0.1`은 healthcheck가 실행되는 PostgreSQL container 자신을 뜻한다. Host에 공개한
+`POSTGRES_HOST_PORT`를 거치지 않고 container 내부의 PostgreSQL TCP listener를 직접 확인한다.
+
+`CMD-SHELL`은 다음 문자열을 container의 기본 shell인 `/bin/sh`로 실행한다. Shell이 필요하기 때문에
+container 안의 `POSTGRES_USER`와 `POSTGRES_DB` 환경변수를 명령에서 사용할 수 있다. 비밀번호는
+전달하지 않는다.
+
+### `$${POSTGRES_USER}`처럼 `$`를 두 번 쓰는 이유
+
+Compose는 `$`가 하나인 `${POSTGRES_USER}`를 설정 파일을 읽는 시점에 먼저 치환한다. 하지만 이번
+명령은 container가 시작된 뒤 container 내부 환경변수를 사용해야 한다. `$$`는 Compose에 literal
+`$`, 즉 글자 그대로의 달러 기호를 남기라는 표시다. Docker에 전달된 명령에서는
+`${POSTGRES_USER}`가 되고, 이후 `/bin/sh`가 container 안의 실제 값을 넣는다.
+
+`$${POSTGRES_USER}` 대신 `${POSTGRES_USER}`를 쓰면 현재 `.env` 값이 명령 문자열에 일찍 들어간다.
+동작할 수는 있지만 Compose 치환과 container 환경변수 사용의 경계가 흐려지고, 나중에 container
+환경 구성을 바꿀 때 검사 명령이 서로 어긋날 가능성이 커진다.
+
+### 각 항목의 의미
+
+| 항목 | 현재 값 | 의미와 선택 이유 |
+|---|---|---|
+| `test` | `pg_isready ...` | PostgreSQL이 container 내부 TCP `5432`에서 연결을 받는지 확인 |
+| `interval` | `10s` | 검사가 끝난 뒤 다음 검사를 실행할 기본 간격 |
+| `timeout` | `5s` | 한 번의 검사가 이 시간 안에 끝나지 않으면 실패 처리 |
+| `retries` | `5` | 시작 유예 시간이 지난 뒤 연속 5회 실패하면 `unhealthy` 처리 |
+| `start_period` | `20s` | 최초 database 초기화 중 발생하는 실패를 횟수에 포함하지 않는 유예 시간 |
+
+`start_period`는 무조건 20초 동안 기다린 뒤 검사한다는 뜻이 아니다. Docker는 이 기간에도 검사를
+실행할 수 있고 성공하면 준비 상태를 확인할 수 있지만, 초기화 중의 예상된 실패를 `retries`에
+포함하지 않는다. 현재 값은 local PostgreSQL 초기화에 약 1분 정도의 실패 허용 범위를 주면서도
+오래된 장애를 계속 숨기지 않도록 정한 시작값이다. 실제 실행 시간이 확인되면 조정할 수 있다.
+
+### `pg_isready`가 확인하는 범위
+
+PostgreSQL 18의 `pg_isready`는 server가 정상적으로 연결을 받으면 종료 코드 `0`, 시작 중처럼 연결을
+거부하면 `1`, 응답이 없으면 `2`, 잘못된 인자 때문에 검사하지 못하면 `3`을 반환한다.
+Docker healthcheck는 `0`을 성공으로 보고 나머지를 실패로 본다.
+
+`pg_isready`는 PostgreSQL server의 연결 수락 상태를 확인하지만 올바른 password 인증과 실제 SQL
+실행 성공까지 보장하지 않는다. 잘못된 사용자나 database 이름을 주어도 server 상태는 확인할 수
+있지만 실패한 연결 기록이 log에 남을 수 있으므로 container에 이미 전달한 정확한 이름을 사용한다.
+[PostgreSQL 18 `pg_isready` 문서](https://www.postgresql.org/docs/18/app-pg-isready.html)를 동작 기준으로
+삼는다.
+
+### 대안과 지금 제외하는 항목
+
+- `psql -c "SELECT 1"`: 인증, database 존재와 간단한 query까지 확인하지만 password 처리와 검사
+  부하가 추가된다. 실제 접속 검증 단계에서 사용하고 container healthcheck는 `pg_isready`로 둔다.
+- `pg_ctl status`: PostgreSQL process 상태는 알 수 있지만 client 연결을 받을 준비가 됐는지는 충분히
+  확인하지 못하므로 선택하지 않는다.
+- TCP port만 확인하는 도구: port가 열렸다는 사실만 확인하고 PostgreSQL protocol 상태를 구분하지
+  못하므로 공식 `pg_isready`를 사용한다.
+- `depends_on: condition: service_healthy`: 나중에 PostgreSQL을 사용하는 application service가
+  추가될 때 사용한다. 지금은 의존 service가 없으므로 작성하지 않는다.
+- `restart`: healthcheck와 다른 책임이며 container가 `unhealthy`가 됐다고 자동 재시작시키는 설정이
+  아니다. 장애 처리 정책을 정할 때 별도로 검토한다.
+
+[Docker Compose healthcheck 문서](https://docs.docker.com/reference/compose-file/services/#healthcheck)는
+`test`, `interval`, `timeout`, `retries`, `start_period`의 역할과 `CMD-SHELL` 실행 방식을 정의한다.
+[Compose interpolation 문서](https://docs.docker.com/reference/compose-file/interpolation/)는 `$$`가
+Compose 치환을 막고 literal `$`를 남기는 표기라고 설명한다.
+
+### 작성 후 확인 방법
+
+사용자가 `healthcheck`를 작성한 뒤 저장소 root에서 먼저 정적 검사를 실행한다. 정적 검사는
+container를 시작하지 않고 Compose가 설정 구조와 값을 올바르게 해석하는지 확인하는 검사다.
+
+```powershell
+docker compose --env-file .\.env.example -f .\infra\compose.yaml config
+```
+
+성공 기준은 종료 코드 `0`이고 해석된 `healthcheck`에 `CMD-SHELL`, `pg_isready`, 네 시간·횟수 설정이
+나타나는 것이다. 특히 검사 명령에 container 환경변수를 위한 달러 기호가 보존되어야 한다. 실패
+기준은 YAML 들여쓰기 오류, 잘못된 duration 형식 또는 Compose가 변수를 빈 문자열로 치환하는 경우다.
+
+이 검사는 실제 상태 전환을 확인하지 않는다. 설정 검사를 통과한 뒤 local `.env`로 container를
+실행해 `starting -> healthy` 전환, `pg_isready`, 실제 SQL 접속과 named volume의 data 유지를 차례로
+검증해야 PostgreSQL 단일 service의 실행 검증이 끝난다.
+
+### 면접 질문
+
+질문: Container가 `running`인 상태와 `healthy`인 상태는 무엇이 다르며, PostgreSQL healthcheck에
+`pg_isready`를 사용해도 실제 query 검증이 별도로 필요한 이유는 무엇인가?
+
+답변 keyword: process 생존, readiness, 주기적 command, exit code, accepting connections,
+authentication과 SQL query는 별도 검증, healthcheck가 자동 복구 정책은 아님.
