@@ -210,20 +210,26 @@ docker compose --env-file .\.env.example -f .\infra\compose.yaml config
 답변 keyword: entrypoint, empty data directory, first initialization, named volume, persisted cluster,
 환경변수 재치환과 database 상태 변경의 구분, 명시적 role/password 변경 절차.
 
-## PostgreSQL Compose의 named volume
+## Docker volume과 PostgreSQL Compose의 named volume
 
 - 기록일: 2026-08-07
-- 현재 상태: 개념 설명과 작성 계획만 확정했으며 `infra/compose.yaml`에는 아직 작성하지 않음
+- 현재 상태: `infra/compose.yaml`에 작성했고 `.env.example`을 사용한 Compose 설정 검사를 통과함.
+  실제 volume 생성과 데이터 유지 여부는 아직 확인하지 않음
 - 질문: PostgreSQL 18의 data를 container 재생성 뒤에도 보존하려면 named volume을 어디에
-  선언하고 어느 container 경로에 mount해야 하는가?
+  선언하고 어느 container 경로에 mount해야 하며, top-level `volumes`는 왜 필요한가?
 
 ### 핵심 답변
 
-Container의 writable layer는 container 수명에 묶이므로 database 기준 데이터를 보관하는 위치로
-사용하면 안 된다. Compose가 관리하는 named volume을 PostgreSQL image의 persistent storage 경계에
-mount하면 container를 삭제하고 다시 만들어도 volume의 database 파일을 재사용할 수 있다.
+Docker volume은 Docker Engine이 container와 별도로 관리하는 저장 공간이다. Container를 제거해도
+named volume은 별도 자원으로 남기 때문에 새 container에 다시 연결해서 기존 data를 사용할 수 있다.
+이름이 붙은 volume을 named volume이라고 한다.
 
-이 프로젝트에서 다음 단계에 사용자가 작성할 구조는 다음과 같다.
+Container의 writable layer, 즉 container가 실행되면서 바뀐 파일을 저장하는 임시 계층은 container
+수명에 묶인다. 따라서 PostgreSQL 기준 데이터를 보관하는 위치로 사용하면 안 된다. 현재 프로젝트는
+named volume을 PostgreSQL image의 data 저장 경로에 mount해 container가 재생성되어도 database
+파일을 다시 사용할 수 있게 한다.
+
+현재 `infra/compose.yaml`에는 다음 구조를 사용한다.
 
 ```yaml
 services:
@@ -236,20 +242,40 @@ volumes:
   postgres-data:
 ```
 
-아직 작성 전인 예시이며, 기존 service 항목을 생략한 완성본이 아니다.
+기존 `image`, `ports`, `environment`는 설명을 위해 생략했으며 실제 파일에는 함께 들어 있다.
 
-### 같은 이름이 두 곳에 필요한 이유
+### top-level `volumes`를 선언하는 이유
+
+top-level `volumes`는 Compose 프로젝트가 관리할 named volume 자원을 정의하는 곳이다. 반면
+service 안의 `volumes`는 정의된 자원을 어떤 container의 어느 경로에 연결할지 지정한다.
+즉, top-level은 자원 선언이고 service-level은 자원 사용이다.
 
 | 위치 | 표현 | 책임 |
 |---|---|---|
-| `services.postgres.volumes` | `postgres-data:/var/lib/postgresql` | 어떤 volume을 PostgreSQL container의 어느 경로에 mount할지 연결 |
-| top-level `volumes` | `postgres-data:` | Compose가 관리할 named volume resource를 선언 |
+| `services.postgres.volumes` | `postgres-data:/var/lib/postgresql` | `postgres-data`를 PostgreSQL container의 `/var/lib/postgresql`에 연결 |
+| top-level `volumes` | `postgres-data:` | Compose가 만들고 추적할 `postgres-data` 자원을 선언 |
+
+service에서 `postgres-data`를 사용하면서 top-level 선언을 빼면 Compose는 그 이름이 어떤 자원을
+가리키는지 확정할 수 없어 `undefined volume` 오류를 낸다. top-level 선언은 필요에 따라 `driver`,
+`external`, `name`, `labels` 같은 volume 관리 옵션을 작성하는 자리이기도 하다. 현재의
+`postgres-data:`처럼 값을 비워 두면 Docker Engine이 현재 host의 저장소를 관리하는 기본
+`local` volume driver를 사용한다.
+
+모든 mount에 top-level 선언이 필요한 것은 아니다. Host 폴더를 container 경로에 직접 연결하는
+bind mount는 `./data:/var/lib/postgresql`처럼 경로를 바로 적는다. 이름 없이 container 경로만 적는
+anonymous volume도 별도의 named volume 선언이 없다. 현재는 이름을 통해 저장 공간을 분명하게
+재사용하고 정리하려고 named volume을 선택했다.
 
 왼쪽 `postgres-data`는 Compose model 안의 논리적 volume 이름이고 오른쪽 `/var/lib/postgresql`은
 container 내부 경로다. `.env.example`의 `COMPOSE_PROJECT_NAME=stockcast`를 사용할 때 Docker의
-실제 resource 이름은 일반적으로 project 이름으로 scope된 `stockcast_postgres-data`가 된다.
-별도의 `name`, `external`과 `driver`를 지정하지 않아 Compose의 project 격리와 Docker의 기본 local
-volume driver를 그대로 사용한다.
+실제 resource 이름은 project 이름이 앞에 붙은 `stockcast_postgres-data`가 된다.
+별도의 `name`, `external`과 `driver`를 지정하지 않아 서로 다른 Compose project의 자원 이름이
+충돌하지 않게 나누는 기본 규칙과 Docker의 기본 `local` volume driver를 그대로 사용한다.
+
+[Docker volume 문서](https://docs.docker.com/engine/storage/volumes/)는 volume을 container와 별도로
+관리되는 저장 공간으로 설명한다. [Compose top-level volumes 문서](https://docs.docker.com/reference/compose-file/volumes/)는
+top-level에서 named volume을 정의하고 service에서 사용할 권한과 mount 위치를 지정하는 구조를
+설명한다.
 
 ### PostgreSQL 18에서 mount 경로가 중요한 이유
 
@@ -303,18 +329,18 @@ Repository 내부 bind mount 경로를 만들지 않으므로 이번 단계에�
 - PostgreSQL major version을 image tag에서 바꾸면 자동 upgrade된다: data format 호환성과 migration은
   별도 절차이며 volume 보존만으로 major upgrade가 완료되지 않는다.
 
-### 작성 후 확인 방법
+### 확인 방법과 현재 검증 범위
 
-사용자가 두 `volumes` 항목을 작성한 뒤 저장소 root에서 다음 명령을 실행한다.
+저장소 root에서 다음 명령을 실행했다.
 
 ```powershell
 docker compose --env-file .\.env.example -f .\infra\compose.yaml config
 ```
 
-성공 기준은 종료 코드 `0`이고 resolved config에 `type: volume`, `source: postgres-data`,
-`target: /var/lib/postgresql`과 top-level named volume이 함께 나타나는 것이다. 실패 기준은 YAML 들여쓰기
-오류, `undefined volume` 또는 target 경로가 `/var/lib/postgresql`과 다른 경우다. 이 명령은 volume을
-생성하거나 data 지속성을 실행 검증하지 않으며, 실제 persistence 검증은 healthcheck 추가 후 수행한다.
+명령은 종료 코드 `0`으로 끝났고 Compose가 해석한 설정에서 `type: volume`,
+`source: postgres-data`, `target: /var/lib/postgresql`, `name: stockcast_postgres-data`를 확인했다.
+이는 YAML 구조, named volume 선언과 service 연결이 올바르다는 뜻이다. 이 명령은 volume을 만들거나
+data 유지 여부를 확인하지 않으므로 실제 지속성 검증은 healthcheck를 추가한 뒤 수행한다.
 
 ### 면접 질문
 
