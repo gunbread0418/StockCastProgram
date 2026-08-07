@@ -491,3 +491,138 @@ table을 삭제했다. 이 결과로 PostgreSQL 단일 service의 설정, readin
 
 답변 keyword: process 생존, readiness, 주기적 command, exit code, accepting connections,
 authentication과 SQL query는 별도 검증, healthcheck가 자동 복구 정책은 아님.
+
+## PowerShell에서 Docker container의 `psql`로 SQL 전달하기
+
+- 기록일: 2026-08-07
+- 질문: PowerShell에서 Compose로 실행 중인 PostgreSQL에 SQL을 전달한 명령은 각 부분이 어떻게
+  동작하며, `CREATE` 문장이 `CREATE` 한 단어로 잘린 오류는 왜 발생했고 어떻게 해결했는가?
+
+### 핵심 답변
+
+이번 명령은 SQL을 여러 겹의 따옴표 안에 넣지 않고 PowerShell의 pipeline으로 `psql` 표준 입력에
+전달한다. Pipeline은 앞 명령의 출력을 뒤 명령의 입력으로 연결하는 기능이며, 표준 입력은 프로그램이
+외부에서 text를 읽는 기본 통로다.
+
+```text
+PowerShell의 SQL 문자열
+  -> PowerShell pipeline
+  -> docker compose exec -T
+  -> PostgreSQL container의 sh
+  -> psql 표준 입력
+  -> PostgreSQL server
+```
+
+검증용 table과 행을 만든 명령의 구조는 다음과 같다.
+
+```powershell
+'CREATE TABLE IF NOT EXISTS compose_persistence_check (id integer PRIMARY KEY); INSERT INTO compose_persistence_check (id) VALUES (1) ON CONFLICT (id) DO NOTHING; SELECT id FROM compose_persistence_check WHERE id = 1;' | docker compose --env-file .\.env -f .\infra\compose.yaml exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+### PowerShell과 Docker 부분
+
+| 문법 | 실행 주체 | 의미 |
+|---|---|---|
+| `'SQL ...'` | PowerShell | 작은따옴표 안의 text를 변수 치환 없이 그대로 만든다. |
+| `|` | PowerShell | 왼쪽의 SQL text를 오른쪽 process의 표준 입력으로 전달한다. |
+| `.\` | PowerShell 경로 | 현재 directory를 기준으로 `.env`와 `infra/compose.yaml`을 찾는다. |
+| `--env-file .\.env` | Docker Compose | Compose file의 `${...}`에 넣을 local 환경변수 파일을 지정한다. |
+| `-f .\infra\compose.yaml` | Docker Compose | 사용할 Compose file을 명시한다. |
+| `exec` | Docker Compose | 이미 실행 중인 service container에서 명령을 실행한다. |
+| `-T` | Docker Compose | 가상 terminal 할당을 끄고 PowerShell pipeline의 입력을 그대로 전달한다. |
+| `postgres` | Docker Compose | 명령을 실행할 service 이름이다. |
+| `sh -c '...'` | container의 shell | 뒤 문자열을 container 안의 shell command로 해석한다. |
+
+PowerShell의 작은따옴표는 `$POSTGRES_PASSWORD` 같은 표현을 host에서 치환하지 않는다. 따라서 이
+문자열이 container까지 전달된 뒤 `sh`가 container 환경변수로 치환한다. Compose file 안에서
+container 실행 시점까지 `$`를 남기려고 `$${POSTGRES_USER}`라고 썼던 것과 목적은 비슷하지만,
+이번 값은 Compose file의 interpolation 대상이 아닌 CLI 명령 인자이므로 `$` 하나를 사용한다.
+
+### `psql` 부분
+
+`PGPASSWORD="$POSTGRES_PASSWORD"`는 바로 뒤에서 실행할 `psql` process에만 접속 password를
+환경변수로 전달한다. PostgreSQL server의 password를 새로 설정하는 명령이 아니며, 실제 값을 command
+text에 직접 적거나 출력하지 않는다.
+
+| 옵션 | 의미 |
+|---|---|
+| `-v ON_ERROR_STOP=1` | SQL 하나가 실패하면 뒤 문장을 계속 실행하지 않고 `psql`을 실패로 끝낸다. |
+| `-h 127.0.0.1` | container 내부 TCP로 PostgreSQL에 접속한다. |
+| `-p 5432` | PostgreSQL container 내부 port를 사용한다. |
+| `-U "$POSTGRES_USER"` | container의 사용자 환경변수를 접속 role로 사용한다. |
+| `-d "$POSTGRES_DB"` | container의 database 환경변수를 접속 대상으로 사용한다. |
+
+이 명령에는 `psql -c`가 없다. 따라서 `psql`은 PowerShell pipeline에서 들어오는 SQL text를 표준
+입력으로 읽는다.
+
+### SQL 문법
+
+- `CREATE TABLE IF NOT EXISTS`: table이 없을 때만 생성하므로 같은 검증을 다시 실행해도 이미 있다는
+  이유로 실패하지 않는다.
+- `id integer PRIMARY KEY`: 정수 `id`를 중복될 수 없는 기본 식별자로 만든다.
+- `INSERT ... VALUES (1)`: 검증용 행 하나를 저장한다.
+- `ON CONFLICT (id) DO NOTHING`: `id=1`이 이미 있으면 중복 오류 대신 아무 변경도 하지 않는다.
+  같은 명령을 반복해도 최종 상태가 같아지는 성질을 멱등성이라고 한다.
+- `SELECT ... WHERE id = 1`: 저장된 검증용 행이 존재하는지 확인한다.
+- `DROP TABLE compose_persistence_check`: data 보존 검증을 마친 뒤 임시 table을 제거한다.
+
+### `CREATE` 문 오류의 원인
+
+처음 명령은 다음처럼 `sh -c` 문자열 안에 `psql -c "SQL ..."`을 다시 넣었다.
+
+```text
+PowerShell
+  -> docker.exe의 native command 인자
+  -> container의 sh -c 문자열
+  -> psql의 -c SQL 인자
+```
+
+PowerShell의 작은따옴표는 PowerShell이 문자열 하나를 만드는 데만 사용되고 따옴표 문자 자체가 모든
+다음 단계에 그대로 남는다는 뜻은 아니다. Windows에서 native command, 즉 PowerShell cmdlet이 아닌
+`docker.exe` 같은 외부 실행파일의 인자로 변환되고 Docker와 `sh -c`를 거치는 동안 내부 큰따옴표가
+SQL의 경계를 유지하지 못했다. 결국 `psql`은
+`CREATE TABLE ...` 전체가 아니라 `-c CREATE`만 받았다.
+
+PostgreSQL의 `ERROR: syntax error at end of input`과 `LINE 1: CREATE`는 parser가 `CREATE` 다음에 올
+대상과 정의를 받지 못한 채 입력이 끝났다는 뜻이다. Docker가 뒤에 표시한 Gordon 문구는 일반적인
+도움말이며 Compose YAML 오류의 증거가 아니었다.
+
+[Microsoft PowerShell quoting rules](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_quoting_rules)는
+PowerShell이 외부 command에 문자열을 전달하기 전에 따옴표를 먼저 해석하며 바깥 따옴표 문자는
+제거된다고 설명한다. 이번 오류의 직접 근거는 `psql`이 보고한 `LINE 1: CREATE`와 표준 입력 방식으로
+바꾼 뒤 같은 SQL이 성공한 실행 결과다.
+
+### 해결 방법과 검증
+
+해결할 때는 SQL을 중첩된 `-c "..."`에서 제거하고 PowerShell pipeline의 왼쪽으로 옮겼다.
+`docker compose exec -T`가 그 text를 container process의 표준 입력으로 전달하고, `psql`은 `-c` 없이
+해당 입력을 읽는다. 이 구조에서는 SQL의 공백과 세미콜론을 container의 `sh`가 command 구분자로
+다시 해석하지 않는다.
+
+먼저 `SELECT 1;`로 전달 경로를 검사했으며 출력 `1`과 종료 코드 `0`을 확인했다. 같은 구조로
+`CREATE TABLE`, `INSERT 0 1`, `id=1` 조회와 `DROP TABLE`까지 성공했다. SQL이 길어지거나 migration으로
+관리해야 할 단계가 되면 pipeline 한 줄보다 `.sql` file과 `psql -f`를 사용하는 편이 수정 이력과
+재실행 범위를 관리하기 쉽다.
+
+[Docker Compose `exec` 문서](https://docs.docker.com/reference/cli/docker/compose/exec/)는 `-T`가
+pseudo-TTY 할당을 끄는 option이라고 정의한다. [PostgreSQL 18 `psql` 문서](https://www.postgresql.org/docs/18/app-psql.html)는
+SQL을 표준 입력이나 file에서 읽을 수 있고, script에서 `ON_ERROR_STOP`이 설정된 상태로 SQL 오류가
+발생하면 실패 종료 코드를 반환한다고 설명한다.
+
+### 흔한 오해
+
+- PowerShell의 작은따옴표가 container shell까지 그대로 전달된다: 작은따옴표는 우선 PowerShell의
+  문자열 경계를 정하며, 다음 native process와 shell은 전달받은 인자를 다시 해석한다.
+- `-T`가 container를 중지한다: `-T`는 가상 terminal만 끄며 실행 중인 container 상태는 바꾸지 않는다.
+- `PGPASSWORD`가 database password를 변경한다: 이 값은 `psql` client가 현재 접속에 사용할
+  password이며 server role의 password를 변경하지 않는다.
+- pipeline이면 secret도 안전하다: SQL text에 실제 password를 직접 넣으면 terminal history나 log에
+  남을 수 있으므로 secret은 container 환경변수로 전달하고 출력하지 않는다.
+
+### 면접 질문
+
+질문: PowerShell에서 Docker container의 `psql -c`로 전달한 SQL이 잘렸을 때 어떤 parsing 경계를
+확인했고, 표준 입력 방식으로 바꾸면서 `-T`와 `ON_ERROR_STOP`을 함께 사용한 이유는 무엇인가?
+
+답변 keyword: PowerShell string, native command argument, `sh -c`, nested quoting, standard input,
+pseudo-TTY 비활성화, SQL error의 non-zero exit, secret을 literal command에 넣지 않기.
