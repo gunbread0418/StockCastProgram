@@ -1286,8 +1286,8 @@ named volume, Admin protocol healthcheck, local-only plaintext.
 ## Kafka UI 단일 Compose service의 내부 Kafka 연결·의존성·healthcheck
 
 - 기록일: 2026-08-10
-- 현재 상태: 구성 원리와 작성할 service를 정리했으며, `infra/compose.yaml` 구현과 정적·실행 검증은
-  아직 수행하지 않음
+- 현재 상태: `infra/compose.yaml` 구현, Compose 정적 검사, 실제 `healthy` 전환, host HTTP와
+  Kafka UI API를 통한 cluster·broker·topic 조회 검증을 통과함
 - 질문: Kafka까지 단일 Compose service 검증을 마친 뒤 Kafka UI를 어떤 설정으로 연결해야 하는가?
 
 ### 핵심 답변
@@ -1407,7 +1407,7 @@ Docker가 `healthy` 또는 `unhealthy`를 판단할 수 있다. 공식 endpoint�
 - `TZ`: UI 화면의 표시 시간대와 event의 `occurredAt`·`receivedAt` 저장 규칙은 다른 문제다. Browser
   표시를 위해 container timezone을 바꿔 event time의 기준을 정한 것처럼 보이게 하지 않는다.
 
-### 작성 후 확인 계획
+### 확인 방법과 검증 결과
 
 저장소 root에서 먼저 공개 예시 값과 local 값으로 Compose model을 검사한다.
 
@@ -1416,8 +1416,10 @@ docker compose --env-file .\.env.example -f .\infra\compose.yaml config --quiet
 docker compose --env-file .\.env -f .\infra\compose.yaml config --quiet
 ```
 
-두 명령이 출력 없이 종료 코드 `0`으로 끝나면 Compose 문법, 환경변수 치환, `depends_on` 참조와
-healthcheck 구조를 읽을 수 있다는 뜻이다. Kafka UI image를 실행하거나 Kafka 연결을 확인한 것은 아니다.
+두 명령은 모두 출력 없이 종료 코드 `0`으로 끝났다. Compose가 `kafbat/kafka-ui:v1.5.0`,
+`127.0.0.1:8088`에서 container port `8080`으로 이어지는 mapping, `kafka:19092`, read-only mode,
+Kafka의 `service_healthy` 의존 조건과 HTTP healthcheck를 예상대로 해석했다. Kafka UI용 volume은
+생성되지 않았다. 이 정적 검사는 Compose model만 확인하므로 다음 실행 검증과 구분했다.
 
 정적 검사 뒤에는 `--no-deps`를 사용하지 않고 Kafka UI와 의존 Kafka를 함께 시작한다.
 
@@ -1425,10 +1427,25 @@ healthcheck 구조를 읽을 수 있다는 뜻이다. Kafka UI image를 실행�
 docker compose --env-file .\.env -f .\infra\compose.yaml up -d --wait --wait-timeout 180 kafka-ui
 ```
 
-실행 검증에서는 Kafka와 Kafka UI가 모두 `healthy`인지, `http://127.0.0.1:8088/actuator/health`가
-`UP`인지, browser에서 `stockcast-local` cluster가 `Online`이고 broker와 topic을 조회하는지 확인한다.
-마지막으로 read-only mode에서 변경 작업이 허용되지 않는지 확인한다. 아직 이 검증을 실행하지
-않았으므로 현재 단계에서는 구현 완료로 기록하지 않는다.
+명령은 Kafka UI image pull을 완료하고 Kafka와 Kafka UI가 제한 시간 안에 `healthy`로 전환된 뒤 종료
+코드 `0`으로 끝났다. 별도 재확인에서도 두 container는 `running`, `healthy`, 재시작 횟수 `0`, 마지막
+healthcheck 종료 코드 `0`이었다. Kafka UI는 `uid=100(kafkaui)`인 비관리자 사용자로 Java process를
+PID 1에서 실행했고 healthcheck가 사용하는 `wget`은 `/usr/bin/wget`에 존재했다. Kafka UI mount는
+0개로 확인됐다.
+
+Host에서 `http://127.0.0.1:8088/actuator/health`는 HTTP `200`과 `UP`, root 경로는 HTTP `200`과
+HTML을 반환했다. `/actuator/info`의 build version은 `v1.5.0`, Git commit은 `afc9c91`이었다.
+
+Kafka UI API는 `stockcast-local` cluster를 `ONLINE`, controller를 `KRAFT`, broker와 topic을 각각
+1개로 보고했다. Broker ID `1`의 주소는 `kafka:19092`였고 50개 partition이 모두 in-sync 상태였다.
+Topic API에서는 Kafka 내부 topic `__consumer_offsets`의 partition 50개, replication factor `1`과
+under-replicated partition `0`을 조회했다. 이 결과로 HTTP server가 응답한다는 사실뿐 아니라 Kafka
+UI가 내부 advertised listener를 통해 broker metadata와 topic을 실제로 읽는 경로까지 확인했다.
+
+Cluster API의 `readOnly` 값은 `true`였고 최근 Kafka UI log 200줄에서 `ERROR`, `FATAL`과
+`Exception`은 0건이었다. Browser 화면을 사람이 직접 확인하는 시각 검증과 실제 변경 API가 거부되는지
+확인하는 쓰기 시도는 수행하지 않았다. Kafka data를 바꾸지 않고 조회 전용 설정이 runtime model에
+적용된 범위까지만 검증했다.
 
 ### 흔한 오해
 
