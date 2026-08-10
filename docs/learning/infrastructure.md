@@ -825,3 +825,185 @@ Docker container 설정의 `/data` mount는 실제 `tmpfs`였고 `stockcast` 이
 
 답변 keyword: source of truth와 regenerable projection, PostgreSQL fallback, RDB와 AOF 비활성화,
 tmpfs lifecycle, `requirepass`, `REDISCLI_AUTH`, `NOAUTH`의 종료 코드 0, 정확한 `PONG` 확인.
+
+## MongoDB Compose의 초기화·영구 저장·healthcheck
+
+- 기록일: 2026-08-10
+- 현재 상태: MongoDB service 작성 전 안내 단계이며, 후보 YAML을 별도 표준 입력으로 전달한
+  Compose 정적 검사만 종료 코드 `0`으로 통과함
+- 질문: raw 원본을 보존하는 MongoDB 단일 service에서 초기 관리자 인증, data volume과
+  healthcheck를 어떻게 구성해야 하는가?
+
+### 핵심 답변
+
+MongoDB는 공급자 raw payload와 파싱 실패 원본을 보존한다. Redis처럼 잃어도 다시 만들 수 있는
+cache가 아니므로 `/data/db`에는 named volume을 연결한다. Named volume은 Docker가 container와
+별도로 관리하는 이름 있는 저장 공간이다.
+
+이번 작성 후보는 다음과 같다.
+
+```yaml
+services:
+  mongo:
+    image: mongo:8.0.28-noble
+    ports:
+      - "${HOST_BIND_ADDRESS}:${MONGO_HOST_PORT}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_INITDB_ROOT_USERNAME:?MONGO_INITDB_ROOT_USERNAME is required}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_INITDB_ROOT_PASSWORD:?MONGO_INITDB_ROOT_PASSWORD is required}"
+    volumes:
+      - mongo-data:/data/db
+    tmpfs:
+      - /data/configdb
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'test "$$(cat /proc/1/comm)" = mongod && mongosh --quiet --host 127.0.0.1 --port 27017 --username "$${MONGO_INITDB_ROOT_USERNAME}" --password "$${MONGO_INITDB_ROOT_PASSWORD}" --authenticationDatabase admin --eval "quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)"'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres-data:
+  mongo-data:
+```
+
+실제 파일의 top-level `volumes`에는 기존 `postgres-data:`를 남기고 `mongo-data:`만 추가한다.
+Redis는 `/data`를 `tmpfs`로 사용하므로 top-level named volume 항목이 없다. `tmpfs`는 container가
+중지되면 내용이 사라지는 memory 기반 임시 filesystem이다.
+
+### Image version과 port
+
+`mongo:8.0.28-noble`은 MongoDB `8.0` major release의 `8.0.28` patch와 Ubuntu Noble 기반을 함께
+고정한다. Major release는 긴 지원 주기와 예측 가능한 upgrade 경계를 제공하는 계열이고, patch는
+같은 계열 안에서 오류와 보안 문제를 수정한 세부 version이다. MongoDB는 major release를 수동으로
+통제하려는 환경에 권장하고 최신 안정 patch를 사용하라고 안내한다.
+
+2026-08-10 기준 Docker Official Image의 `8.0` Dockerfile은 `MONGO_VERSION 8.0.28`과 Ubuntu Noble을
+사용한다. `latest`나 `8`처럼 이동하는 tag는 나중에 다른 server version을 가져올 수 있으므로 재현성을
+위해 사용하지 않는다. 근거는 [MongoDB versioning 문서](https://www.mongodb.com/docs/v8.0/reference/versioning/)와
+[Mongo Dockerfile](https://github.com/docker-library/mongo/blob/master/8.0/Dockerfile)을 따른다.
+
+Port mapping은 host의 `127.0.0.1:${MONGO_HOST_PORT}`를 MongoDB container의 고정 port `27017`로
+연결한다. Host에서 실행하는 `mongosh`나 Spring Boot는 공개 port를 사용하고, 나중에 같은 Compose
+network에 들어오는 application container는 service DNS인 `mongo:27017`을 사용한다.
+
+### 초기 관리자 환경변수의 수명 주기
+
+`MONGO_INITDB_ROOT_USERNAME`과 `MONGO_INITDB_ROOT_PASSWORD`를 함께 전달하면 Docker Official Image가
+첫 초기화 때 `admin` 인증 database에 `root` role을 가진 관리자를 만들고 이후 `mongod --auth`로
+인증을 켠다. 둘 중 하나만 있으면 image entrypoint가 오류를 내므로 `${VAR:?message}`로 Compose
+설정 해석 단계에서도 누락을 먼저 막는다.
+
+두 변수는 `/data/db`가 비어 있는 첫 시작에만 database 상태를 만든다. Named volume에 기존 MongoDB
+data가 있으면 `.env`의 사용자명이나 password를 바꾸고 container를 재시작해도 기존 계정이 자동으로
+바뀌지 않는다. 공식 동작은 [Mongo Docker Official Image의 환경변수 설명](https://hub.docker.com/_/mongo)을
+기준으로 한다.
+
+`MONGO_INITDB_DATABASE`는 이번 단계에서 넣지 않는다. 이 변수는 `/docker-entrypoint-initdb.d`의
+초기화 script를 어느 database에서 실행할지 정할 뿐이며, 값만 선언해서 application database를
+만들지는 않는다. MongoDB는 첫 document가 저장될 때 database와 collection을 만드는 방식이므로,
+M5에서 `raw_market_events`와 최소 권한 application 사용자를 설계할 때 초기화 script 도입 여부를
+결정한다. 현재 root 관리자를 Spring application 계정으로 사용하지 않는다.
+
+### `/data/db`와 `/data/configdb`의 수명 분리
+
+`mongo-data:/data/db`는 raw 원본과 MongoDB 내부 metadata를 container 재생성 뒤에도 보존한다.
+Linux MongoDB image를 Windows의 host folder에 직접 bind mount하면 memory-mapped file 호환 문제가
+생길 수 있어, 공식 image도 Windows와 macOS에서는 Docker local named volume을 권장한다.
+
+Official Image는 `/data/db` 외에 `/data/configdb`도 image volume으로 선언한다. `/data/configdb`는
+sharded cluster의 config server가 사용하는 경로다. 현재 M1은 standalone MongoDB 한 대이며 sharding을
+구성하지 않으므로 이 경로를 보존할 이유가 없다. Image가 선언한 경로에 이름 없는 volume이 생기는
+것을 피하려고 `/data/configdb`에는 `tmpfs`를 명시한다. 나중에 `--configsvr`를 도입하면 이 임시
+filesystem 정책을 제거하고 별도 영구 저장 정책을 설계해야 한다.
+
+이 경로 구분은 [Mongo Official Image의 data 저장 안내](https://hub.docker.com/_/mongo)와
+[8.0 Dockerfile의 volume 선언](https://github.com/docker-library/mongo/blob/master/8.0/Dockerfile#L626)을
+근거로 한다. Repository 내부 bind mount를 만들지 않으므로 현재 `.gitignore`에 MongoDB data 경로를
+추가하지 않는다.
+
+### 최종 `mongod`와 인증을 확인하는 healthcheck
+
+Healthcheck는 두 조건을 순서대로 확인한다.
+
+```text
+PID 1이 최종 mongod process인가
+  -> root 계정으로 admin database에 인증 가능한가
+  -> ping command의 ok 값이 1인가
+```
+
+Official Image의 entrypoint는 빈 data directory를 초기화하는 동안 임시 `mongod`를 먼저 실행하고,
+관리자를 만든 뒤 이 process를 종료한 다음 최종 `mongod --auth`를 시작한다. 임시 process도
+`127.0.0.1:27017`에서 잠시 요청을 받으므로 `ping`만 검사하면 초기화가 끝나기 전에 healthy로
+판단할 가능성이 있다. 이 순서는 [Mongo Docker entrypoint](https://github.com/docker-library/mongo/blob/master/docker-entrypoint.sh)의
+초기화 절차를 근거로 한다.
+
+`test "$$(cat /proc/1/comm)" = mongod`는 container의 PID 1, 즉 주 process가 최종 `mongod`로
+교체됐는지 먼저 확인한다. Compose file의 `$$`는 Compose가 host 환경변수로 먼저 치환하지 않고
+container shell에 `$` 하나를 전달하기 위한 escape다. 초기화 중 PID 1은 entrypoint shell이므로
+이 검사를 통과하지 못한다.
+
+그다음 `mongosh`가 container 내부 loopback `127.0.0.1:27017`에 연결한다. Root 사용자는 `admin`
+database에 생성되므로 `--authenticationDatabase admin`이 필요하다. `db.adminCommand({ ping: 1 })`은
+server가 command에 응답하는지 확인하고, 결과의 `ok`가 `1`일 때만 shell을 종료 코드 `0`으로 끝낸다.
+[MongoDB `ping` 문서](https://www.mongodb.com/docs/manual/reference/command/ping/)는 이 command를 server
+응답 확인용 no-op, 즉 database 상태를 변경하지 않는 명령으로 정의한다.
+
+`start_period: 30s`는 첫 database 초기화 동안 실패 횟수를 바로 누적하지 않게 하는 준비 시간이다.
+PID 1 검사와 인증된 `ping`을 함께 쓰므로 준비 시간 안에 임시 `mongod`가 응답하더라도 최종 준비
+상태로 오판하지 않는다. 이 healthcheck는 인증과 server 응답까지만 확인하며 raw document 쓰기,
+named volume data 보존과 host 공개 port 연결은 별도 runtime 검증이 필요하다.
+
+### 이번 단계에서 넣지 않는 항목
+
+- `command`와 별도 `mongod.conf`: 기본 standalone server와 root 인증은 official entrypoint로 충분하다.
+- Replica set과 sharding: transaction, change stream 또는 다중 node 실험이 필요한 확장 단계에서
+  key file과 member 초기화까지 함께 설계해야 한다.
+- Application database·사용자·collection 초기화 script: M5의 raw event 저장 계약과 최소 권한을
+  정할 때 추가한다.
+- `TZ`: BSON Date는 UTC epoch 기준 millisecond로 저장되므로 server `TZ`만으로 event time 규칙을
+  만들지 않는다. M5에서 `occurredAt`과 `receivedAt`을 BSON Date로 저장하고 UTC 값을 검증한다.
+  [MongoDB BSON type 문서](https://www.mongodb.com/docs/manual/reference/bson-types/)는 BSON Date를
+  Unix epoch 이후 millisecond를 담는 UTC datetime으로 정의한다.
+- `container_name`, custom network와 `restart`: Compose의 project 격리와 default network를 유지하고,
+  재시작 정책은 전체 service 장애 실험 기준을 정한 뒤 추가한다.
+
+### 확인 방법과 현재 검증 범위
+
+사용자가 `infra/compose.yaml`에 작성한 뒤 저장소 root에서 먼저 다음 명령 하나를 실행한다.
+
+```powershell
+docker compose --env-file .\.env.example -f .\infra\compose.yaml config --quiet
+```
+
+성공 기준은 출력 없이 종료 코드 `0`으로 끝나는 것이다. 종료 코드는 process가 성공했는지 실패했는지
+숫자로 알려주는 값이다. 실패 기준은 YAML parse 오류, `undefined volume`, 필수 환경변수 누락 또는
+0이 아닌 종료 코드다. 이 검사는 Compose 문법, 환경변수 치환과 named volume 참조만 확인하며 image
+pull, MongoDB 초기화, 인증, healthcheck와 data 보존은 아직 확인하지 않는다.
+
+이 문서에 기록한 후보 YAML은 실제 secret이 아닌 예시 값을 표준 입력으로 전달해
+`docker compose -f - config --quiet`를 실행했고 종료 코드 `0`을 확인했다. 아직 실제
+`infra/compose.yaml`은 사용자가 작성하지 않았으며, local `.env`와 MongoDB runtime도 검증하지 않았다.
+
+### 흔한 오해
+
+- `MONGO_INITDB_DATABASE=stockcast`를 쓰면 빈 application database가 생긴다: 초기화 script의 실행
+  대상만 정하며 document를 쓰지 않으면 database가 생성되지 않는다.
+- `.env`의 root password를 바꾸고 재시작하면 기존 계정도 바뀐다: 초기화 변수는 빈 `/data/db`에만
+  적용되므로 기존 volume에서는 명시적인 password 변경 절차가 필요하다.
+- `ping`이 성공하면 data 보존도 검증됐다: server 응답과 named volume persistence는 다른 검증이다.
+- MongoDB도 Redis처럼 tmpfs만 사용해도 된다: raw 원본은 replay와 parser 분석 근거이므로 재시작 뒤
+  보존해야 한다.
+- Root 관리자를 application이 그대로 사용해도 된다: M1 접속 검증용 관리자이며 M5에서는 필요한
+  database와 collection에만 접근하는 별도 사용자를 만들어야 한다.
+
+### 면접 질문
+
+질문: MongoDB Docker Official Image의 root 초기화 환경변수가 기존 named volume에서 password를
+바꾸지 않는 이유와, healthcheck에서 PID 1 확인 뒤 인증된 `ping`을 실행한 이유는 무엇인가?
+
+답변 keyword: empty data directory, first initialization, `admin` authentication database,
+named volume, temporary init `mongod`, final PID 1, Compose `$$` escape, authenticated ping,
+정적 검사와 runtime 검증의 구분.
