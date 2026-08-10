@@ -3,9 +3,9 @@
 ## 문서 메타데이터
 
 - 마지막 업데이트: 2026-08-10
-- 최근 완료 마일스톤: M0. Repository 초기화와 설계 기준
+- 최근 완료 마일스톤: M1. Docker Compose 인프라
 - 현재 마일스톤: M1. Docker Compose 인프라
-- 상태: IN_PROGRESS
+- 상태: DONE
 - 다음 마일스톤: M2. Spring Boot 기본 구성
 
 ## 현재 요약
@@ -16,8 +16,8 @@ M0의 프로젝트 목적, 작업 규칙, 상태·로드맵·아키텍처·ADR �
 문서화해 Git에서 추적한다. 애플리케이션 source는 아직 없으며 인프라는 PostgreSQL Compose
 service부터 구현을 시작했다.
 
-M1의 Docker 실행 환경 사전검증에 이어 PostgreSQL, Redis, MongoDB, Kafka와 Kafka UI 단일 service의
-Compose 구성을 완료했다.
+M1의 Docker 실행 환경 사전검증에 이어 PostgreSQL, Redis, MongoDB, Kafka와 Kafka UI의 Compose
+구성과 단일 service 검증을 완료했다.
 `infra/compose.yaml`에 `postgres:18.4-bookworm`, loopback host port, 필수 환경변수, PostgreSQL 18
 경로의 named volume과 `pg_isready` healthcheck를 작성했다. Compose 설정 해석, `healthy` 전환,
 비밀번호를 사용한 TCP 접속, database·사용자·UTC와 container 재생성 후 data 보존을 검증했다.
@@ -34,8 +34,15 @@ Admin 요청 healthcheck를 사용한다. 실제 version·cluster ID·실행 사
 재생성 후 record 보존과 검증 topic 정리를 확인했다. Kafka UI는 `kafbat/kafka-ui:v1.5.0`, loopback
 host port, 조회 전용 cluster 설정, Kafka `service_healthy` 의존 조건과 HTTP healthcheck를 사용한다.
 Kafka와 Kafka UI의 `healthy`, host HTTP `UP`, `ONLINE` cluster, `kafka:19092` broker와 내부 topic
-조회, read-only 적용과 오류 log 부재를 확인했다. 다음 작업은 다섯 service를 동시에 시작해 M1의
-전체 Compose 구성이 함께 재현되는지 검증하는 것이다.
+조회, read-only 적용과 오류 log 부재를 확인했다.
+
+마지막으로 다섯 service를 `--force-recreate --wait`로 한 번에 시작했다. PostgreSQL, Redis,
+MongoDB와 Kafka는 약 17.2초, Kafka UI는 Kafka의 `healthy` 전환 뒤 약 29.3초에 `healthy`가 됐고
+명령은 종료 코드 `0`으로 끝났다. `docker compose ps`에서 다섯 service의 `healthy`와 loopback
+공개 port를 다시 확인했다. 전체 service가 실행 중인 상태에서 PostgreSQL `SELECT 1`, Redis
+`PONG`, MongoDB `MONGO_OK`, host Kafka listener의 `__consumer_offsets` 조회와 Kafka UI의
+`stockcast-local ONLINE`을 확인했다. 이 결과로 M1의 전체 Compose 재현과 핵심 접속 경로 검증을
+완료했다.
 
 구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
 중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
@@ -67,10 +74,11 @@ network 경계를 문서화했다.
 - Kafka 내부·host protocol, 임시 topic produce/consume과 container 재생성 후 record 보존 검증
 - Kafka UI 단일 Compose service의 내부 Kafka 연결, 조회 전용 설정, 의존 조건과 healthcheck 구현
 - Kafka UI host HTTP, `ONLINE` cluster, broker·topic 조회와 오류 log 부재 검증
+- 다섯 service의 강제 재생성, 동시 `healthy` 전환과 loopback 공개 port 검증
+- 전체 service 실행 중 PostgreSQL·Redis·MongoDB 인증 접속, Kafka host listener와 Kafka UI cluster 조회 검증
 
 ## 아직 구현되지 않은 항목
 
-- M1의 PostgreSQL, Redis, MongoDB, Kafka와 Kafka UI 동시 실행 검증
 - Spring Boot source와 Gradle build
 - FastAPI source와 Python package
 - DB schema와 migration
@@ -95,6 +103,7 @@ network 경계를 문서화했다.
 - `.env.example` commit은 `aaeff71` (`chore: add local environment template`)이다.
 - Git 작성자 이메일의 GitHub 계정 연결을 사용자가 확인했다.
 - `infra/compose.yaml`에는 PostgreSQL, Redis, MongoDB, Kafka와 Kafka UI service가 구현되어 있다.
+- M1의 다섯 service 동시 기동과 핵심 접속 경로 검증이 완료됐다.
 - Spring Boot와 FastAPI 애플리케이션 source는 아직 없다.
 - 최상위 component 디렉터리는 빈 디렉터리용 `.gitkeep`이 아니라 책임 README로 추적한다.
 
@@ -132,12 +141,14 @@ network 경계를 문서화했다.
 - `docs/learning/infrastructure.md`: Kafka KRaft, listener, 영구 저장, healthcheck와 실제 검증 결과
 - `docs/learning/infrastructure.md`: Kafka UI 내부 연결, 의존 조건, HTTP healthcheck와 실제 검증 결과
 - `docs/TROUBLESHOOTING.md`: PowerShell에서 `psql` SQL이 잘린 `ERR-004`의 해결과 검증
+- `docs/learning/infrastructure.md`: 전체 Compose 동시 기동과 읽기 전용 핵심 접속 검증 결과
+- `docs/TROUBLESHOOTING.md`: `Invoke-RestMethod`의 JSON 배열을 펼치지 않아 빈 표가 나온 `ERR-005`
+- `docs/ROADMAP.md`: M1 상태를 `DONE`으로 전환
 
 ## 추후 `.gitignore` 점검 시점
 
 | 시점 | 확인할 항목 | 지금 미리 넣지 않은 이유 |
 |---|---|---|
-| M1 전체 Compose 최종 검증 | repository 내부 bind mount data 경로 | Kafka UI까지 volume과 bind mount 없이 구현되어 현재 ignore 규칙으로 충분함 |
 | M10 model pipeline | dataset, model artifact, `*.pkl`, `*.joblib` 정책 | 재현성과 artifact 보존 위치를 먼저 결정해야 함 |
 | M13 선택 UI | `node_modules/`와 선택한 frontend tool cache | 현재 Node 기반 UI가 존재하지 않음 |
 | 모든 마일스톤 | 새 build tool의 cache, log와 generated output | 실제 경로를 확인한 뒤 좁은 규칙으로 추가해야 함 |
@@ -151,13 +162,14 @@ network 경계를 문서화했다.
 - 최상위 component 책임과 Git 추적 정책이 README와 ADR에 기록됨
 - 문서 내부 링크, 필수 파일, 민감정보와 Git 상태 검증을 통과함
 
-## 현재 마일스톤 완료 기준
+## M1 완료 검증
 
 - PostgreSQL, Redis, MongoDB, Kafka와 Kafka UI가 Compose로 실행됨
 - 각 service healthcheck와 의존 관계가 정의됨
 - 필요한 데이터가 재시작 후 보존됨
 - DB·Redis·Mongo 접속과 Kafka produce/consume 검증이 성공함
 - secret 없이 다른 개발 환경에서 로컬 인프라를 재현할 수 있음
+- repository 내부 bind mount data가 없어 현재 `.gitignore` 규칙으로 충분함
 
 ## 검증 기록
 
@@ -199,6 +211,10 @@ network 경계를 문서화했다.
 | 2026-08-10 | Kafka UI Compose 설정 | `.env.example`과 local `.env` 모두 `docker compose config --quiet` 종료 코드 0, image·port·cluster·read-only·의존 조건·healthcheck 해석 확인 |
 | 2026-08-10 | Kafka UI 실행과 HTTP healthcheck | `up -d --wait` 성공, Kafka와 Kafka UI `healthy`, 재시작 0회, host `/actuator/health=UP`, root HTTP 200과 build `v1.5.0` 확인 |
 | 2026-08-10 | Kafka UI cluster 조회 | API에서 `stockcast-local=ONLINE`, KRaft broker `kafka:19092`, 내부 topic `__consumer_offsets`, read-only 적용, under-replicated partition과 최근 오류 log 0건 확인 |
+| 2026-08-10 | 전체 Compose 동시 기동 | `--force-recreate --wait --wait-timeout 240` 종료 코드 0, 다섯 service `healthy`; 네 core service 약 17.2초, Kafka UI 약 29.3초 확인 |
+| 2026-08-10 | 전체 Compose 상태와 공개 port | 다섯 service가 계속 `healthy`; `127.0.0.1`의 PostgreSQL 5432, Redis 6379, MongoDB 27017, Kafka 29092와 Kafka UI 8088 mapping 확인 |
+| 2026-08-10 | 전체 핵심 접속 경로 | PostgreSQL `SELECT 1`, Redis `PONG`, MongoDB `MONGO_OK`, Kafka `__consumer_offsets`와 Kafka UI `stockcast-local ONLINE` 확인 |
+| 2026-08-10 | M1 `.gitignore` 최종 점검 | Compose service에 repository 내부 bind mount가 없고 named volume·tmpfs만 사용하므로 추가 ignore 규칙이 필요하지 않음 |
 
 ## 알려진 실패와 blocker
 
@@ -213,13 +229,15 @@ network 경계를 문서화했다.
   표준 입력과 `exec -T` 방식으로 해결했으며 `ERR-004`로 기록함
 - 같은 중첩 따옴표 경계에서 `mongosh --eval` JavaScript가 `const`까지만 전달된 오류는
   표준 입력과 `mongosh --file /dev/stdin`으로 해결하고 `ERR-004`에 추가 증거를 기록함
+- `Invoke-RestMethod`의 JSON 배열을 `Select-Object`에 직접 전달해 빈 표가 나온 문제는 배열 항목을
+  `Write-Output`으로 펼쳐 `stockcast-local ONLINE`을 확인하고 `ERR-005`로 기록함
 - 샌드박스의 `.git` 쓰기와 네트워크 제한은 승인된 권한으로 commit과 GitHub 접근을 수행함
 
 ## 다음 작업
 
-M1의 다음 단일 TODO로 PostgreSQL, Redis, MongoDB, Kafka와 Kafka UI를 함께 시작하고 다섯 service의
-동시 `healthy`, 공개 port와 핵심 접속 경로를 최종 검증한다.
+M2의 첫 단일 TODO로 현재 Windows 개발 환경의 Java 21 JDK를 `java -version`과 `javac -version`으로
+사전검증한다. Spring Boot project와 Gradle Wrapper 생성은 이 실행 환경을 확인한 뒤 시작한다.
 
 ## 다음 채팅 시작 문장
 
-`M1의 PostgreSQL, Redis, MongoDB, Kafka와 Kafka UI 단일 service 검증을 각각 완료했어. 다음 TODO로 다섯 service의 전체 Compose 동시 실행을 검증할 수 있게 설명해줘.`
+`M1 Docker Compose 인프라를 완료했어. M2 Spring Boot 기본 구성을 시작하기 전에 첫 TODO로 Java 21 JDK 실행 환경을 설명하고 검증할 수 있게 안내해줘.`

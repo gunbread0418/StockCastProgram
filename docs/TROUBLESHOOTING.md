@@ -97,6 +97,27 @@
   실행할 때는 `psql -c`나 `mongosh --eval`에 긴 코드를 중첩하지 않는다. SQL은 표준 입력,
   JavaScript는 표준 입력과 `--file /dev/stdin`으로 전달하고 `compose exec -T`를 함께 사용한다.
 
+## ERR-005: Kafka UI cluster 배열을 펼치지 않아 값이 비어 보인 PowerShell 출력
+
+- 날짜: 2026-08-10
+- 마일스톤: M1. Docker Compose 인프라
+- 상태: `RESOLVED`
+- 실행 맥락: 전체 Compose 핵심 접속 경로를 검증하면서 Kafka UI의 `/api/clusters` 응답을
+  `Invoke-RestMethod`에서 바로 `Select-Object name, status`로 전달했다.
+- 증상: HTTP 오류는 발생하지 않았지만 `name`과 `status` heading 아래 값이 없는 표가 출력됐다.
+  같은 명령을 다시 실행해도 결과가 같았다.
+- 원인: 이 PowerShell 실행 환경에서 `Invoke-RestMethod`가 최상위 JSON 배열을 하나의 collection
+  object로 pipeline에 전달했다. `Select-Object`가 배열의 각 cluster가 아니라 배열 자체에서
+  `name`과 `status`를 찾았기 때문에 두 값이 비어 보였다. Kafka UI나 Kafka cluster 장애는 아니었다.
+- 해결 과정: 응답을 `$clusters`에 저장하고 `Write-Output $clusters`로 배열 항목을 pipeline에
+  펼친 뒤 `Select-Object name, status`를 적용했다.
+- 검증 결과: 같은 `/api/clusters` 응답에서 `stockcast-local`과 `ONLINE`이 출력됐다. 이 결과로
+  host의 Kafka UI HTTP 경로와 Kafka UI에서 내부 `kafka:19092` broker를 조회하는 경로가 모두
+  정상임을 확인했다.
+- 재발 방지: REST API의 최상위 응답이 JSON 배열이면 property 선택 전에 항목을 명시적으로 펼친다.
+  응답 구조가 불명확하면 같은 선택 명령을 반복하지 않고 `ConvertTo-Json -Depth`로 원본 구조를
+  먼저 확인한다.
+
 ## 새 오류 기록 템플릿
 
 ```markdown

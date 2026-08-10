@@ -1464,3 +1464,127 @@ Cluster API의 `readOnly` 값은 `true`였고 최근 Kafka UI log 200줄에서 `
 답변 keyword: Compose default network와 service DNS, container 내부 `localhost`, internal advertised
 listener, bootstrap과 metadata, startup readiness, runtime 장애는 별도, HTTP health와 cluster 조회의
 검증 범위 구분, stateless UI와 Kafka log persistence.
+
+## 전체 Compose 동시 기동과 핵심 접속 경로 검증
+
+- 기록일: 2026-08-10
+- 현재 상태: PostgreSQL, Redis, MongoDB, Kafka와 Kafka UI의 전체 기동, 동시 `healthy`, 공개 port와
+  읽기 전용 핵심 접속 검증을 통과해 M1을 완료함
+- 질문: 다섯 service를 각각 검증한 뒤 전체 Compose 구성이 한 개발 환경에서 함께 재현되는지는
+  어떻게 확인해야 하는가?
+
+### 핵심 답변
+
+단일 service 검증은 각 image, 인증, 저장 방식과 healthcheck가 독립적으로 동작한다는 근거다. 전체
+Compose 검증에서는 다섯 service를 한 project로 시작했을 때 port 충돌, host 자원 경쟁, 기존 named
+volume과 현재 환경변수의 불일치, Kafka와 Kafka UI의 시작 의존 관계가 함께 문제를 만들지 않는지
+확인한다.
+
+이 프로젝트에서 전체 기동은 모든 container가 정확히 같은 순간에 시작한다는 뜻이 아니다.
+PostgreSQL, Redis, MongoDB와 Kafka는 서로 독립적으로 시작할 수 있지만 Kafka UI는
+`depends_on.condition: service_healthy`에 따라 Kafka가 `healthy`가 된 뒤 시작한다. 전체 project가
+제한 시간 안에 최종 `healthy` 상태로 모이는지를 검증한다.
+
+### 전체 기동 명령
+
+저장소 root에서 local `.env`를 사용해 다음 명령을 실행했다.
+
+```powershell
+docker compose --env-file .\.env -f .\infra\compose.yaml up -d --force-recreate --wait --wait-timeout 240
+```
+
+Service 이름을 생략했으므로 Compose model의 다섯 service를 모두 대상으로 한다. `--force-recreate`는
+설정이나 image가 바뀌지 않았어도 기존 container를 새로 만들어 이전 실행 상태를 재사용하지 않게
+한다. 이 option은 named volume을 삭제하지 않으므로 PostgreSQL, MongoDB와 Kafka의 영구 data는
+유지된다. Redis의 `/data`는 `tmpfs`이므로 container 재생성 때 cache가 사라지며 현재 저장소 책임에
+맞는 동작이다.
+
+`--wait`는 container 생성 직후가 아니라 각 service가 `running` 또는 `healthy`가 될 때까지 기다린다.
+현재 다섯 service 모두 healthcheck가 있으므로 전체 검증에서는 모두 `healthy`가 되어야 한다.
+`--wait-timeout 240`은 실패를 무한정 기다리지 않고 project 준비 상태의 최대 대기 시간을 240초로
+제한한다.
+
+명령은 다섯 service를 모두 대상으로 실행됐고 종료 코드 `0`이었다. PostgreSQL, Redis, MongoDB와
+Kafka는 약 17.2초, Kafka UI는 Kafka 준비 뒤 약 29.3초에 `healthy`가 됐다.
+
+### 실행 후 상태와 공개 port
+
+기동 명령이 끝난 뒤 다음 명령으로 현재 상태를 다시 확인했다.
+
+```powershell
+docker compose --env-file .\.env -f .\infra\compose.yaml ps
+```
+
+다섯 service는 모두 계속 `Up (healthy)`였고 다음 loopback 공개 port가 확인됐다.
+
+| Service | Host 경로 | Container port |
+|---|---|---|
+| PostgreSQL | `127.0.0.1:5432` | `5432` |
+| Redis | `127.0.0.1:6379` | `6379` |
+| MongoDB | `127.0.0.1:27017` | `27017` |
+| Kafka | `127.0.0.1:29092` | `9092` |
+| Kafka UI | `127.0.0.1:8088` | `8080` |
+
+`docker compose ps`는 container 상태와 port mapping의 한 시점만 보여준다. 인증, query와 Kafka
+protocol이 실제로 동작한다는 사실은 별도의 client 요청으로 확인해야 한다.
+
+### 읽기 전용 핵심 접속 검증
+
+전체 service가 실행 중인 상태에서 각 공개 경로에 다음 최소 요청을 보냈다.
+
+- PostgreSQL: 비밀번호 인증 뒤 `SELECT 1 AS postgres_ok`가 `1`을 반환했다.
+- Redis: container에 설정된 `REDISCLI_AUTH`를 사용한 `PING`이 `PONG`을 반환했다.
+- MongoDB: root 인증 뒤 `db.adminCommand({ ping: 1 })`이 성공해 `MONGO_OK`를 출력했다.
+- Kafka: host network의 일회성 Kafka client가 `localhost:29092`로 topic 목록을 요청해
+  `__consumer_offsets`를 조회했다.
+- Kafka UI: host의 `/api/clusters` 응답에서 `stockcast-local`이 `ONLINE`으로 확인됐다.
+
+PostgreSQL과 MongoDB의 긴 query·JavaScript는 이전 PowerShell 따옴표 오류를 피하기 위해 표준 입력과
+`compose exec -T`로 전달했다. 비밀번호 값은 명령 출력이나 문서에 남기지 않았다.
+
+이번 전체 검증에서는 새 Kafka topic이나 database row를 만들지 않았다. Produce/consume과 영구
+data 보존은 각 단일 service 단계에서 이미 검증했으므로, 전체 기동에서는 host listener의 Kafka
+Admin 요청과 읽기 전용 DB command로 범위를 줄였다. 같은 검사를 반복하면서 검증 data를 남기지
+않기 위한 선택이다.
+
+### PowerShell REST 배열 출력 주의점
+
+Kafka UI의 `/api/clusters`는 최상위 JSON 배열을 반환했다. 이 환경에서는 다음처럼
+`Invoke-RestMethod`의 결과를 바로 `Select-Object`로 전달했을 때 heading만 있고 값이 비어 보였다.
+
+```powershell
+Invoke-RestMethod -Uri 'http://127.0.0.1:8088/api/clusters' |
+  Select-Object name, status
+```
+
+HTTP 요청은 성공했지만 `Select-Object`가 배열 항목이 아니라 collection object를 검사했기 때문이다.
+응답을 변수에 저장한 뒤 `Write-Output`으로 항목을 펼쳐 해결했다.
+
+```powershell
+$clusters = Invoke-RestMethod -Uri 'http://127.0.0.1:8088/api/clusters'
+Write-Output $clusters | Select-Object name, status
+```
+
+수정한 명령은 `stockcast-local ONLINE`을 출력했다. 원인, 영향과 재발 방지 방법은
+`docs/TROUBLESHOOTING.md`의 `ERR-005`에 기록했다.
+
+### 흔한 오해
+
+- 모든 service가 `healthy`면 host client도 접속된다: healthcheck는 주로 container 내부 경로를
+  사용하므로 공개 port와 인증된 protocol 요청은 별도로 확인해야 한다.
+- `--force-recreate`가 named volume도 삭제한다: container는 새로 만들지만 `down -v`나 별도 volume
+  삭제를 사용하지 않으면 named volume은 유지된다.
+- Kafka UI가 늦게 시작하면 실패다: Kafka의 `healthy`를 기다리는 의존 관계가 적용된 정상 순서다.
+- `docker compose ps`만으로 M1 검증이 끝난다: 상태 표시는 query, 인증, Kafka advertised listener와
+  UI의 cluster 조회까지 보장하지 않는다.
+- 빈 PowerShell 표는 API가 빈 응답을 반환했다는 뜻이다: collection을 펼치지 않아 property가 비어
+  보일 수 있으므로 HTTP 오류, 원본 JSON 구조와 배열 처리 방식을 구분해야 한다.
+
+### 면접 질문
+
+질문: 각 Compose service를 따로 검증했는데도 전체 project를 다시 시작하고 접속 경로를 확인한 이유는
+무엇인가?
+
+답변 keyword: 독립 검증과 통합 검증의 범위, port 충돌, host 자원 경쟁, dependency graph,
+`service_healthy`, 전체 readiness, named volume과 tmpfs, container 내부 healthcheck와 host 공개 경로,
+인증된 protocol smoke test, mutation 없는 최종 확인.
