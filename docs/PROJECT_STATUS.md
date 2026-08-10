@@ -16,14 +16,17 @@ M0의 프로젝트 목적, 작업 규칙, 상태·로드맵·아키텍처·ADR �
 문서화해 Git에서 추적한다. 애플리케이션 source는 아직 없으며 인프라는 PostgreSQL Compose
 service부터 구현을 시작했다.
 
-M1의 Docker 실행 환경 사전검증에 이어 PostgreSQL과 Redis 단일 service의 Compose 구성을 완료했다.
+M1의 Docker 실행 환경 사전검증에 이어 PostgreSQL, Redis와 MongoDB 단일 service의 Compose 구성을 완료했다.
 `infra/compose.yaml`에 `postgres:18.4-bookworm`, loopback host port, 필수 환경변수, PostgreSQL 18
 경로의 named volume과 `pg_isready` healthcheck를 작성했다. Compose 설정 해석, `healthy` 전환,
 비밀번호를 사용한 TCP 접속, database·사용자·UTC와 container 재생성 후 data 보존을 검증했다.
 Redis는 `redis:8.2.8-bookworm`, 비밀번호 인증, loopback host port와 인증된 `PING` healthcheck를
 사용한다. 기준 저장소가 아닌 재생성 가능한 cache라는 책임에 맞춰 RDB와 AOF를 끄고 `/data`를
 `tmpfs`로 구성했다. 미인증 요청 거부, host 공개 port를 통한 인증된 `PING`, `healthy` 전환과
-재시작 후 검증 key 소멸을 확인했다. 다음 작업은 MongoDB 단일 service의 Compose 구성이다.
+재시작 후 검증 key 소멸을 확인했다. MongoDB는 `mongo:8.0.28-noble`, 초기 root 관리자 인증,
+loopback host port, `/data/db` named volume, `/data/configdb` tmpfs와 인증된 `ping` healthcheck를
+사용한다. 미인증 관리 명령 거부, 내부와 host 공개 port의 인증, 최종 `mongod` PID 1, container
+재생성 후 검증 document 보존과 정리를 확인했다. 다음 작업은 Kafka 단일 service의 Compose 구성이다.
 
 구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
 중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
@@ -49,10 +52,12 @@ network 경계를 문서화했다.
 - PostgreSQL 실제 접속, UTC와 container 재생성 후 named volume data 보존 검증
 - Redis 단일 Compose service의 image, port, 인증 command, tmpfs와 healthcheck 구현
 - Redis 미인증 요청 거부, 인증된 PING과 재시작 후 cache data 소멸 검증
+- MongoDB 단일 Compose service의 image, port, 초기 관리자, named volume, tmpfs와 healthcheck 구현
+- MongoDB 미인증 관리 명령 거부, 인증된 내부·host 접속과 container 재생성 후 data 보존 검증
 
 ## 아직 구현되지 않은 항목
 
-- MongoDB, Kafka와 Kafka UI의 Compose service
+- Kafka와 Kafka UI의 Compose service
 - Spring Boot source와 Gradle build
 - FastAPI source와 Python package
 - DB schema와 migration
@@ -76,7 +81,7 @@ network 경계를 문서화했다.
 - 첫 commit은 `5364609` (`chore: initialize project foundation`)이다.
 - `.env.example` commit은 `aaeff71` (`chore: add local environment template`)이다.
 - Git 작성자 이메일의 GitHub 계정 연결을 사용자가 확인했다.
-- `infra/compose.yaml`에는 PostgreSQL과 Redis service가 구현되어 있다.
+- `infra/compose.yaml`에는 PostgreSQL, Redis와 MongoDB service가 구현되어 있다.
 - Spring Boot와 FastAPI 애플리케이션 source는 아직 없다.
 - 최상위 component 디렉터리는 빈 디렉터리용 `.gitkeep`이 아니라 책임 README로 추적한다.
 
@@ -107,16 +112,17 @@ network 경계를 문서화했다.
 - `docs/learning/README.md`: 다섯 개념 category와 질문 기록·중복 방지 규칙
 - `docs/learning/infrastructure.md`: Docker Compose `ports` 개념과 프로젝트 적용 기록
 - `AGENTS.md`: 구현·개념 전용 채팅의 지속적인 학습 문서 갱신 규칙
-- `infra/compose.yaml`: PostgreSQL 영구 저장 service와 Redis 재생성 가능 cache service의 실행 설정
+- `infra/compose.yaml`: PostgreSQL·MongoDB 영구 저장 service와 Redis 재생성 가능 cache service의 실행 설정
 - `docs/learning/infrastructure.md`: PostgreSQL environment, volume, healthcheck의 실제 검증 결과
 - `docs/learning/infrastructure.md`: Redis 인증, healthcheck와 비영구 cache 정책의 실제 검증 결과
+- `docs/learning/infrastructure.md`: MongoDB 초기화, 영구 저장, 인증 healthcheck와 실제 검증 결과
 - `docs/TROUBLESHOOTING.md`: PowerShell에서 `psql` SQL이 잘린 `ERR-004`의 해결과 검증
 
 ## 추후 `.gitignore` 점검 시점
 
 | 시점 | 확인할 항목 | 지금 미리 넣지 않은 이유 |
 |---|---|---|
-| M1의 남은 Compose service | repository 내부 bind mount data 경로 | PostgreSQL은 named volume, Redis는 tmpfs를 사용해 제외할 로컬 경로가 없으며 새 service 추가 때 다시 확인 |
+| M1의 남은 Compose service | repository 내부 bind mount data 경로 | PostgreSQL·MongoDB는 named volume, Redis는 tmpfs를 사용해 제외할 로컬 경로가 없으며 새 service 추가 때 다시 확인 |
 | M10 model pipeline | dataset, model artifact, `*.pkl`, `*.joblib` 정책 | 재현성과 artifact 보존 위치를 먼저 결정해야 함 |
 | M13 선택 UI | `node_modules/`와 선택한 frontend tool cache | 현재 Node 기반 UI가 존재하지 않음 |
 | 모든 마일스톤 | 새 build tool의 cache, log와 generated output | 실제 경로를 확인한 뒤 좁은 규칙으로 추가해야 함 |
@@ -168,6 +174,9 @@ network 경계를 문서화했다.
 | 2026-08-10 | Redis Compose 설정 | `.env.example`과 local `.env` 모두 `docker compose config --quiet` 종료 코드 0, image·port·command·tmpfs·healthcheck 해석 확인 |
 | 2026-08-10 | Redis 실행과 인증 | `up -d --wait` 성공, `healthy`, 미인증 `PING`은 `NOAUTH`, 내부와 host 공개 port의 인증된 `PING`은 `PONG` 확인 |
 | 2026-08-10 | Redis 비영구 cache 정책 | `save` 빈 값, `appendonly=no`, `/data` tmpfs, Redis named volume 없음과 재시작 후 검증 key 소멸 확인 |
+| 2026-08-10 | MongoDB Compose 설정 | `.env.example`과 local `.env` 모두 `docker compose config --quiet` 종료 코드 0, `mongo:8.0.28-noble`, port·환경변수·mount·healthcheck 해석 확인 |
+| 2026-08-10 | MongoDB 실행과 인증 | `up -d --wait` 성공, `healthy`, 미인증 `listDatabases` 거부, 내부와 host 공개 port의 인증된 `ping=1`, PID 1 `mongod` 확인 |
+| 2026-08-10 | MongoDB data 지속성 | `/data/db` local named volume과 `/data/configdb` tmpfs 확인, container ID 변경 후 검증 document 재조회 성공, 검증 database 삭제 확인 |
 
 ## 알려진 실패와 blocker
 
@@ -180,12 +189,14 @@ network 경계를 문서화했다.
   `ERR-003`으로 기록함
 - PowerShell, `compose exec`와 `sh -c`의 중첩 따옴표 때문에 `psql -c` SQL이 잘린 오류는
   표준 입력과 `exec -T` 방식으로 해결했으며 `ERR-004`로 기록함
+- 같은 중첩 따옴표 경계에서 `mongosh --eval` JavaScript가 `const`까지만 전달된 오류는
+  표준 입력과 `mongosh --file /dev/stdin`으로 해결하고 `ERR-004`에 추가 증거를 기록함
 - 샌드박스의 `.git` 쓰기와 네트워크 제한은 승인된 권한으로 commit과 GitHub 접근을 수행함
 
 ## 다음 작업
 
-M1의 다음 단일 TODO로 MongoDB 단일 service의 Compose 구성을 학습하고 작성한다.
+M1의 다음 단일 TODO로 Kafka 단일 service의 Compose 구성을 학습하고 작성한다.
 
 ## 다음 채팅 시작 문장
 
-`M1의 PostgreSQL과 Redis 단일 Compose service 검증을 완료했어. 다음 TODO로 MongoDB 단일 service의 Compose 구성을 내가 직접 작성할 수 있게 설명해줘.`
+`M1의 PostgreSQL, Redis와 MongoDB 단일 Compose service 검증을 완료했어. 다음 TODO로 Kafka 단일 service의 Compose 구성을 내가 직접 작성할 수 있게 설명해줘.`

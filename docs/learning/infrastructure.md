@@ -829,8 +829,8 @@ tmpfs lifecycle, `requirepass`, `REDISCLI_AUTH`, `NOAUTH`의 종료 코드 0, �
 ## MongoDB Compose의 초기화·영구 저장·healthcheck
 
 - 기록일: 2026-08-10
-- 현재 상태: MongoDB service 작성 전 안내 단계이며, 후보 YAML을 별도 표준 입력으로 전달한
-  Compose 정적 검사만 종료 코드 `0`으로 통과함
+- 현재 상태: `infra/compose.yaml` 작성, Compose 정적 검사, 실제 `healthy` 전환, 인증과
+  container 재생성 후 data 보존 검증을 모두 통과함
 - 질문: raw 원본을 보존하는 MongoDB 단일 service에서 초기 관리자 인증, data volume과
   healthcheck를 어떻게 구성해야 하는가?
 
@@ -840,7 +840,7 @@ MongoDB는 공급자 raw payload와 파싱 실패 원본을 보존한다. Redis�
 cache가 아니므로 `/data/db`에는 named volume을 연결한다. Named volume은 Docker가 container와
 별도로 관리하는 이름 있는 저장 공간이다.
 
-이번 작성 후보는 다음과 같다.
+현재 설정은 다음과 같다.
 
 ```yaml
 services:
@@ -972,20 +972,36 @@ named volume data 보존과 host 공개 port 연결은 별도 runtime 검증이 
 
 ### 확인 방법과 현재 검증 범위
 
-사용자가 `infra/compose.yaml`에 작성한 뒤 저장소 root에서 먼저 다음 명령 하나를 실행한다.
+저장소 root에서 공개 가능한 예시 값과 local 값을 사용해 Compose model을 검사했다.
 
 ```powershell
 docker compose --env-file .\.env.example -f .\infra\compose.yaml config --quiet
+docker compose --env-file .\.env -f .\infra\compose.yaml config --quiet
 ```
 
-성공 기준은 출력 없이 종료 코드 `0`으로 끝나는 것이다. 종료 코드는 process가 성공했는지 실패했는지
-숫자로 알려주는 값이다. 실패 기준은 YAML parse 오류, `undefined volume`, 필수 환경변수 누락 또는
-0이 아닌 종료 코드다. 이 검사는 Compose 문법, 환경변수 치환과 named volume 참조만 확인하며 image
-pull, MongoDB 초기화, 인증, healthcheck와 data 보존은 아직 확인하지 않는다.
+두 명령 모두 출력 없이 종료 코드 `0`으로 끝났다. 종료 코드는 process가 성공했는지 실패했는지
+숫자로 알려주는 값이다. 이 정적 검사는 Compose 문법, 환경변수 치환과 named volume 참조를
+확인하지만 healthcheck 문자열 안의 JavaScript 문법은 실행하지 않는다. 실제로 `db.admin Command`라는
+오타가 있어도 정적 검사는 통과했으며 코드 리뷰에서 `db.adminCommand`로 수정한 뒤 runtime을 시작했다.
 
-이 문서에 기록한 후보 YAML은 실제 secret이 아닌 예시 값을 표준 입력으로 전달해
-`docker compose -f - config --quiet`를 실행했고 종료 코드 `0`을 확인했다. 아직 실제
-`infra/compose.yaml`은 사용자가 작성하지 않았으며, local `.env`와 MongoDB runtime도 검증하지 않았다.
+`docker compose up -d --wait --wait-timeout 120 --no-deps mongo`는 종료 코드 `0`이었고
+`mongo:8.0.28-noble` container가 `healthy`로 전환됐다. 실제 server version은 `8.0.28`, PID 1은
+`mongodb` 사용자의 `mongod`, 공개 port는 `127.0.0.1:27017`이었다. 미인증 `listDatabases`는
+`requires authentication`과 종료 코드 `1`로 거부됐고, container 내부와 `host.docker.internal`을
+통한 host 공개 port의 인증된 `ping`은 모두 `1`이었다.
+
+Container metadata에서 `/data/db`는 `stockcast_mongo-data`라는 `local` named volume,
+`/data/configdb`는 `tmpfs`로 확인했다. 전용 `compose_runtime_check` database에 검증 document를
+저장한 뒤 `--force-recreate --no-deps mongo`로 MongoDB container만 재생성했다. Container ID가
+변한 뒤에도 같은 marker를 조회해 data 보존을 확인했고, 검증 database를 삭제한 뒤 목록에 남지
+않는 것도 확인했다. 최종 container는 `healthy`, 최근 healthcheck 종료 코드 `0`이었으며 마지막
+200개 log에는 error 또는 fatal level 기록이 없었다.
+
+Runtime 검증용 JavaScript를 `sh -c` 안의 `mongosh --eval "..."` 인자로 중첩했을 때 전체 script가
+아니라 `const`만 전달돼 `SyntaxError`가 발생했다. JavaScript를 PowerShell pipeline으로 전달하고
+`docker compose exec -T`와 `mongosh --file /dev/stdin`으로 읽게 바꾸자 같은 인증·조회 script가
+종료 코드 `0`으로 실행됐다. 이는 MongoDB service 장애가 아니라 여러 shell을 거친 command 인자
+경계 문제이며, 같은 원인의 PostgreSQL 사례는 `docs/TROUBLESHOOTING.md`의 `ERR-004`에 기록돼 있다.
 
 ### 흔한 오해
 

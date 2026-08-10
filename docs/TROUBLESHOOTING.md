@@ -88,9 +88,14 @@
   `1`이 출력됐고 명령이 종료 코드 `0`으로 끝났다. 같은 방식으로 검증용 table 생성,
   `INSERT 0 1`과 `id=1` 조회까지 성공했고, container 재생성 후 조회와 table 삭제도 통과했다.
   비밀번호 값은 명령 출력과 문서에 남기지 않았다.
-- 재발 방지: PowerShell에서 컨테이너의 `sh -c`를 거쳐 공백과 따옴표가 포함된 SQL을 실행할
-  때는 `psql -c`를 중첩하지 않는다. SQL을 파이프로 전달하고 `exec -T`,
-  `ON_ERROR_STOP=1`을 함께 사용한다.
+- 추가 재현: 2026-08-10 MongoDB runtime 검증에서 `sh -c` 안의
+  `mongosh --eval "const ..."`로 JavaScript를 전달했을 때 `const`만 인자로 남아
+  `SyntaxError: Unexpected token`이 발생했다. JavaScript를 PowerShell pipeline으로 전달하고
+  `docker compose exec -T`와 `mongosh --file /dev/stdin`을 사용하자 인증과 조회가 종료 코드 `0`으로
+  성공했다. 이는 MongoDB service 오류가 아니라 같은 중첩 따옴표 경계의 추가 재현이다.
+- 재발 방지: PowerShell에서 컨테이너의 `sh -c`를 거쳐 공백과 따옴표가 포함된 SQL이나 JavaScript를
+  실행할 때는 `psql -c`나 `mongosh --eval`에 긴 코드를 중첩하지 않는다. SQL은 표준 입력,
+  JavaScript는 표준 입력과 `--file /dev/stdin`으로 전달하고 `compose exec -T`를 함께 사용한다.
 
 ## 새 오류 기록 템플릿
 
