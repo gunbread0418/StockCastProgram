@@ -1282,3 +1282,168 @@ single-node KRaft에서 internal topic replication factor를 `1`로 설정한 �
 답변 keyword: bootstrap과 advertised listeners, `localhost`와 Compose service DNS, combined
 broker/controller, controller quorum, single broker, internal topic, replication factor와 ISR,
 named volume, Admin protocol healthcheck, local-only plaintext.
+
+## Kafka UI 단일 Compose service의 내부 Kafka 연결·의존성·healthcheck
+
+- 기록일: 2026-08-10
+- 현재 상태: 구성 원리와 작성할 service를 정리했으며, `infra/compose.yaml` 구현과 정적·실행 검증은
+  아직 수행하지 않음
+- 질문: Kafka까지 단일 Compose service 검증을 마친 뒤 Kafka UI를 어떤 설정으로 연결해야 하는가?
+
+### 핵심 답변
+
+M1에서는 Kafbat UI `kafbat/kafka-ui:v1.5.0` 한 개를 Kafka의 관측용 web service로 실행한다.
+Kafka UI는 broker, topic, partition, consumer group과 message를 browser에서 확인하게 해 주지만 event를
+보관하는 기준 저장소는 아니다. Kafka UI container를 지웠다가 다시 만들어도 Kafka의 topic과 record는
+`kafka-data` named volume에 남아 있으므로 Kafka UI 자체에는 volume을 연결하지 않는다.
+
+작성할 service는 다음과 같다.
+
+```yaml
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.5.0
+    ports:
+      - "${HOST_BIND_ADDRESS}:${KAFKA_UI_HOST_PORT}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "stockcast-local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:19092"
+      KAFKA_CLUSTERS_0_READONLY: "true"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O /dev/null http://127.0.0.1:8080/actuator/health
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+```
+
+Kafbat UI `v1.5.0`은 2026-04-20 공개된 현재 release이고 Docker Hub에 같은 고정 tag가 있다.
+`latest` 대신 release tag를 고정하면 다른 개발 환경에서도 같은 application version을 받는다. 근거는
+[Kafbat UI 1.5.0 release](https://github.com/kafbat/kafka-ui/releases/tag/v1.5.0)와
+[Kafbat UI Docker image tag](https://hub.docker.com/r/kafbat/kafka-ui/tags)를 따른다.
+
+### Browser 요청과 Kafka 연결 흐름
+
+두 연결은 서로 다른 network 경계를 지난다.
+
+```text
+Windows browser
+  -> http://127.0.0.1:${KAFKA_UI_HOST_PORT}
+  -> Docker published port
+  -> kafka-ui:8080 HTTP server
+
+kafka-ui container
+  -> kafka:19092 bootstrap 연결
+  -> Kafka가 kafka:19092를 advertised listener로 반환
+  -> broker metadata, topic과 message 조회
+```
+
+`ports`의 오른쪽 `8080`은 Kafka UI의 기본 HTTP port다. 왼쪽 host port는 `.env.example`에서
+`KAFKA_UI_HOST_PORT=8088`을 공개 기본값으로 제공하며 local `.env`에는 같은 변수의 로컬 값을 둔다.
+`HOST_BIND_ADDRESS=127.0.0.1`에 묶기 때문에 현재 Windows host 밖으로 UI를 공개하지 않는다.
+
+`KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS`에는 host용 `localhost:${KAFKA_HOST_PORT}`가 아니라 Compose
+service DNS와 내부 listener인 `kafka:19092`를 넣는다. Kafka UI container 안에서 `localhost`는
+Windows나 Kafka가 아니라 Kafka UI container 자신을 뜻한다. Kafka가 이미 내부 client에게
+`kafka:19092`를 광고하도록 검증됐으므로 이 주소를 그대로 사용해야 bootstrap 뒤의 후속 연결도
+성공한다.
+
+### Cluster 설정과 read-only 선택
+
+`KAFKA_CLUSTERS_0_NAME`은 Kafka UI 화면에 표시할 이름이다. Kafka의 실제 KRaft cluster ID를 바꾸지
+않으며, 여러 cluster가 등록됐을 때 사용자가 구분하기 위한 label이다.
+
+`KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS`는 Kafka UI가 최초 metadata를 요청할 broker 주소다. Kafbat UI는
+환경변수 이름을 Spring 설정의 중첩 구조로 변환하며, 공식 설정 문서도 이 값을 cluster 연결 주소로
+정의한다.
+
+`KAFKA_CLUSTERS_0_READONLY: "true"`는 조회 전용 mode를 켠다. M1과 M4에서 Kafka UI의 책임은 topic과
+message를 관찰하는 것이므로 browser에서 실수로 topic, record나 consumer group offset을 변경할 수
+있는 동작을 막는다. Application topic은 M4에서 partition, key와 retention 계약을 정한 뒤 코드나
+검증 명령으로 생성한다. Kafka UI에서 직접 관리하는 실습이 필요해지면 해당 작업 범위에서만
+`false` 전환을 검토한다. 환경변수의 의미와 기본값은
+[Kafbat UI configuration properties](https://ui.docs.kafbat.io/configuration/misc-configuration-properties)를
+기준으로 한다.
+
+### `depends_on`이 보장하는 범위
+
+`condition: service_healthy`는 Kafka container가 단순히 시작된 시점이 아니라 기존 Kafka
+healthcheck를 통과한 뒤 Kafka UI를 시작하게 한다. 현재 Kafka healthcheck는 `kafka:19092`에 Admin
+요청을 보내므로 Kafka UI가 사용하는 것과 같은 내부 listener의 준비 상태를 선행 조건으로 삼는다.
+
+이 설정은 시작 순서만 다룬다. Kafka가 실행 중 나중에 중지됐다고 해서 Compose가 Kafka UI도 자동으로
+중지하거나 재시작하지는 않는다. Kafka UI가 offline 상태를 표시하고 Kafka 복구 뒤 다시 연결하는지는
+별도 장애 검증 범위다. `depends_on`의 정확한 시작 보장은
+[Docker Compose startup order](https://docs.docker.com/compose/how-tos/startup-order/)를 따른다.
+
+### Kafka UI 자체 healthcheck
+
+Kafbat UI가 공식적으로 제공하는 `/actuator/health` endpoint에 container 내부에서 HTTP 요청을 보낸다.
+`wget`이 HTTP 성공 응답을 받으면 종료 코드 `0`, 연결 실패나 오류 응답이면 0이 아닌 값으로 끝나므로
+Docker가 `healthy` 또는 `unhealthy`를 판단할 수 있다. 공식 endpoint는
+[Kafbat UI repository의 health probe 안내](https://github.com/kafbat/kafka-ui#liveliness-and-readiness-probes)를
+기준으로 한다.
+
+이 검사는 Kafka UI의 HTTP application이 응답하는지를 확인한다. Browser에서 cluster가 `Online`으로
+보이고 broker와 topic을 실제로 조회할 수 있는지까지 같은 검사로 단정하지 않는다. Kafka 연결은
+화면 또는 Kafka UI API, container log와 별도 임시 topic 조회로 확인해야 한다.
+
+### 이번 단계에서 넣지 않는 항목
+
+- Volume: Kafka UI의 정적 cluster 설정은 Compose 환경변수로 재생성할 수 있고 Kafka record는 broker가
+  보관하므로 Kafka UI용 영구 저장 공간이 필요하지 않다.
+- `DYNAMIC_CONFIG_ENABLED`: 실행 중 화면에서 cluster 설정을 바꾸는 기능은 기본값 `false`로 둔다.
+  지금은 Compose를 기준 설정으로 유지하며 writable config file과 이를 보관할 volume을 만들지 않는다.
+- UI login과 TLS: loopback에만 공개하는 local 학습 환경에서는 제외한다. Binding을 외부 interface로
+  넓히기 전에는 인증, 암호화와 권한을 함께 추가해야 한다.
+- Schema Registry, Kafka Connect, ksqlDB와 JMX metrics: 아직 해당 service와 endpoint가 없으므로 빈
+  연결 설정을 미리 만들지 않는다.
+- `container_name`, custom network와 `restart`: Compose project와 default network를 그대로 사용하고
+  전체 service의 재시작 정책과 장애 실험 범위를 정한 뒤 추가한다.
+- `TZ`: UI 화면의 표시 시간대와 event의 `occurredAt`·`receivedAt` 저장 규칙은 다른 문제다. Browser
+  표시를 위해 container timezone을 바꿔 event time의 기준을 정한 것처럼 보이게 하지 않는다.
+
+### 작성 후 확인 계획
+
+저장소 root에서 먼저 공개 예시 값과 local 값으로 Compose model을 검사한다.
+
+```powershell
+docker compose --env-file .\.env.example -f .\infra\compose.yaml config --quiet
+docker compose --env-file .\.env -f .\infra\compose.yaml config --quiet
+```
+
+두 명령이 출력 없이 종료 코드 `0`으로 끝나면 Compose 문법, 환경변수 치환, `depends_on` 참조와
+healthcheck 구조를 읽을 수 있다는 뜻이다. Kafka UI image를 실행하거나 Kafka 연결을 확인한 것은 아니다.
+
+정적 검사 뒤에는 `--no-deps`를 사용하지 않고 Kafka UI와 의존 Kafka를 함께 시작한다.
+
+```powershell
+docker compose --env-file .\.env -f .\infra\compose.yaml up -d --wait --wait-timeout 180 kafka-ui
+```
+
+실행 검증에서는 Kafka와 Kafka UI가 모두 `healthy`인지, `http://127.0.0.1:8088/actuator/health`가
+`UP`인지, browser에서 `stockcast-local` cluster가 `Online`이고 broker와 topic을 조회하는지 확인한다.
+마지막으로 read-only mode에서 변경 작업이 허용되지 않는지 확인한다. 아직 이 검증을 실행하지
+않았으므로 현재 단계에서는 구현 완료로 기록하지 않는다.
+
+### 흔한 오해
+
+- Kafka UI가 host에서 열리면 Kafka 연결도 정상이다: HTTP server와 broker metadata 연결은 별도다.
+- Kafka UI도 `localhost:${KAFKA_HOST_PORT}`로 연결한다: container 내부 `localhost`는 Kafka UI 자신이다.
+- `depends_on: kafka`만 쓰면 readiness를 기다린다: 짧은 형식은 container 시작만 기다리므로
+  `condition: service_healthy`가 필요하다.
+- Kafka UI volume이 없으면 topic이 사라진다: topic과 record는 Kafka의 `kafka-data` volume에 있다.
+- Healthcheck가 통과하면 화면 기능 전체가 검증됐다: HTTP 응답과 실제 cluster 조회는 따로 확인해야 한다.
+
+### 면접 질문
+
+질문: Kafka UI container가 Windows용 `localhost:29092` 대신 `kafka:19092`를 사용해야 하는 이유와
+`depends_on.condition: service_healthy`가 보장하는 범위는 무엇인가?
+
+답변 keyword: Compose default network와 service DNS, container 내부 `localhost`, internal advertised
+listener, bootstrap과 metadata, startup readiness, runtime 장애는 별도, HTTP health와 cluster 조회의
+검증 범위 구분, stateless UI와 Kafka log persistence.
