@@ -16,7 +16,7 @@ M0의 프로젝트 목적, 작업 규칙, 상태·로드맵·아키텍처·ADR �
 문서화해 Git에서 추적한다. 애플리케이션 source는 아직 없으며 인프라는 PostgreSQL Compose
 service부터 구현을 시작했다.
 
-M1의 Docker 실행 환경 사전검증에 이어 PostgreSQL, Redis와 MongoDB 단일 service의 Compose 구성을 완료했다.
+M1의 Docker 실행 환경 사전검증에 이어 PostgreSQL, Redis, MongoDB와 Kafka 단일 service의 Compose 구성을 완료했다.
 `infra/compose.yaml`에 `postgres:18.4-bookworm`, loopback host port, 필수 환경변수, PostgreSQL 18
 경로의 named volume과 `pg_isready` healthcheck를 작성했다. Compose 설정 해석, `healthy` 전환,
 비밀번호를 사용한 TCP 접속, database·사용자·UTC와 container 재생성 후 data 보존을 검증했다.
@@ -26,7 +26,12 @@ Redis는 `redis:8.2.8-bookworm`, 비밀번호 인증, loopback host port와 인�
 재시작 후 검증 key 소멸을 확인했다. MongoDB는 `mongo:8.0.28-noble`, 초기 root 관리자 인증,
 loopback host port, `/data/db` named volume, `/data/configdb` tmpfs와 인증된 `ping` healthcheck를
 사용한다. 미인증 관리 명령 거부, 내부와 host 공개 port의 인증, 최종 `mongod` PID 1, container
-재생성 후 검증 document 보존과 정리를 확인했다. 다음 작업은 Kafka 단일 service의 Compose 구성이다.
+재생성 후 검증 document 보존과 정리를 확인했다. Kafka는 `apache/kafka:4.3.1` 단일 KRaft combined
+node, 내부·host listener, 단일 node용 내부 topic 설정, `/var/lib/kafka/data` named volume과 Kafka
+Admin 요청 healthcheck를 사용한다. 실제 version·cluster ID·실행 사용자와 server 설정, 내부
+`kafka:19092`와 host `localhost:29092`의 Kafka protocol, 임시 topic produce/consume, container
+재생성 후 record 보존과 검증 topic 정리를 확인했다. 다음 작업은 Kafka UI 단일 service의 Compose
+구성이다.
 
 구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
 중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
@@ -54,14 +59,16 @@ network 경계를 문서화했다.
 - Redis 미인증 요청 거부, 인증된 PING과 재시작 후 cache data 소멸 검증
 - MongoDB 단일 Compose service의 image, port, 초기 관리자, named volume, tmpfs와 healthcheck 구현
 - MongoDB 미인증 관리 명령 거부, 인증된 내부·host 접속과 container 재생성 후 data 보존 검증
+- Kafka 단일 Compose service의 KRaft combined mode, 내부·host listener, named volume과 healthcheck 구현
+- Kafka 내부·host protocol, 임시 topic produce/consume과 container 재생성 후 record 보존 검증
 
 ## 아직 구현되지 않은 항목
 
-- Kafka와 Kafka UI의 Compose service
+- Kafka UI의 Compose service
 - Spring Boot source와 Gradle build
 - FastAPI source와 Python package
 - DB schema와 migration
-- Kafka topic과 producer/consumer
+- Kafka application topic과 producer/consumer
 - domain·통합·계약 테스트
 - monitoring과 장애 실험
 
@@ -81,7 +88,7 @@ network 경계를 문서화했다.
 - 첫 commit은 `5364609` (`chore: initialize project foundation`)이다.
 - `.env.example` commit은 `aaeff71` (`chore: add local environment template`)이다.
 - Git 작성자 이메일의 GitHub 계정 연결을 사용자가 확인했다.
-- `infra/compose.yaml`에는 PostgreSQL, Redis와 MongoDB service가 구현되어 있다.
+- `infra/compose.yaml`에는 PostgreSQL, Redis, MongoDB와 Kafka service가 구현되어 있다.
 - Spring Boot와 FastAPI 애플리케이션 source는 아직 없다.
 - 최상위 component 디렉터리는 빈 디렉터리용 `.gitkeep`이 아니라 책임 README로 추적한다.
 
@@ -112,17 +119,18 @@ network 경계를 문서화했다.
 - `docs/learning/README.md`: 다섯 개념 category와 질문 기록·중복 방지 규칙
 - `docs/learning/infrastructure.md`: Docker Compose `ports` 개념과 프로젝트 적용 기록
 - `AGENTS.md`: 구현·개념 전용 채팅의 지속적인 학습 문서 갱신 규칙
-- `infra/compose.yaml`: PostgreSQL·MongoDB 영구 저장 service와 Redis 재생성 가능 cache service의 실행 설정
+- `infra/compose.yaml`: PostgreSQL·MongoDB·Kafka 영구 저장 service와 Redis 재생성 가능 cache service의 실행 설정
 - `docs/learning/infrastructure.md`: PostgreSQL environment, volume, healthcheck의 실제 검증 결과
 - `docs/learning/infrastructure.md`: Redis 인증, healthcheck와 비영구 cache 정책의 실제 검증 결과
 - `docs/learning/infrastructure.md`: MongoDB 초기화, 영구 저장, 인증 healthcheck와 실제 검증 결과
+- `docs/learning/infrastructure.md`: Kafka KRaft, listener, 영구 저장, healthcheck와 실제 검증 결과
 - `docs/TROUBLESHOOTING.md`: PowerShell에서 `psql` SQL이 잘린 `ERR-004`의 해결과 검증
 
 ## 추후 `.gitignore` 점검 시점
 
 | 시점 | 확인할 항목 | 지금 미리 넣지 않은 이유 |
 |---|---|---|
-| M1의 남은 Compose service | repository 내부 bind mount data 경로 | PostgreSQL·MongoDB는 named volume, Redis는 tmpfs를 사용해 제외할 로컬 경로가 없으며 새 service 추가 때 다시 확인 |
+| M1의 남은 Compose service | repository 내부 bind mount data 경로 | PostgreSQL·MongoDB·Kafka는 named volume, Redis는 tmpfs를 사용하며 남은 Kafka UI에는 로컬 data 경로가 필요하지 않음 |
 | M10 model pipeline | dataset, model artifact, `*.pkl`, `*.joblib` 정책 | 재현성과 artifact 보존 위치를 먼저 결정해야 함 |
 | M13 선택 UI | `node_modules/`와 선택한 frontend tool cache | 현재 Node 기반 UI가 존재하지 않음 |
 | 모든 마일스톤 | 새 build tool의 cache, log와 generated output | 실제 경로를 확인한 뒤 좁은 규칙으로 추가해야 함 |
@@ -177,6 +185,10 @@ network 경계를 문서화했다.
 | 2026-08-10 | MongoDB Compose 설정 | `.env.example`과 local `.env` 모두 `docker compose config --quiet` 종료 코드 0, `mongo:8.0.28-noble`, port·환경변수·mount·healthcheck 해석 확인 |
 | 2026-08-10 | MongoDB 실행과 인증 | `up -d --wait` 성공, `healthy`, 미인증 `listDatabases` 거부, 내부와 host 공개 port의 인증된 `ping=1`, PID 1 `mongod` 확인 |
 | 2026-08-10 | MongoDB data 지속성 | `/data/db` local named volume과 `/data/configdb` tmpfs 확인, container ID 변경 후 검증 document 재조회 성공, 검증 database 삭제 확인 |
+| 2026-08-10 | Kafka Compose 설정 | `.env.example`과 local `.env` 모두 `docker compose config --quiet` 종료 코드 0, `apache/kafka:4.3.1`, listener·KRaft·내부 topic·mount·healthcheck 해석 확인 |
+| 2026-08-10 | Kafka 실행과 listener | `up -d --wait` 성공, `healthy`, server `4.3.1`, cluster ID·node ID·`appuser`, 내부 `kafka:19092`와 host `localhost:29092` Kafka protocol 확인 |
+| 2026-08-10 | Kafka produce/consume과 data 지속성 | 임시 topic에서 marker 왕복 성공, container ID 변경 뒤 같은 record 재조회, `stockcast_kafka-data` 유지, 검증 topic 삭제 확인 |
+| 2026-08-10 | Kafka 최종 상태 | 재생성 뒤 healthcheck 종료 코드 0, 실제 `server.properties`·`meta.properties` 일치, 최근 log 200줄의 `ERROR`·`FATAL` 0건 확인 |
 
 ## 알려진 실패와 blocker
 
@@ -195,8 +207,8 @@ network 경계를 문서화했다.
 
 ## 다음 작업
 
-M1의 다음 단일 TODO로 Kafka 단일 service의 Compose 구성을 학습하고 작성한다.
+M1의 다음 단일 TODO로 Kafka UI 단일 service의 Compose 구성을 학습하고 작성한다.
 
 ## 다음 채팅 시작 문장
 
-`M1의 PostgreSQL, Redis와 MongoDB 단일 Compose service 검증을 완료했어. 다음 TODO로 Kafka 단일 service의 Compose 구성을 내가 직접 작성할 수 있게 설명해줘.`
+`M1의 PostgreSQL, Redis, MongoDB와 Kafka 단일 Compose service 검증을 완료했어. 다음 TODO로 Kafka UI 단일 service의 Compose 구성을 내가 직접 작성할 수 있게 설명해줘.`

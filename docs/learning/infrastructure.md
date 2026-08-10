@@ -1027,7 +1027,8 @@ named volume, temporary init `mongod`, final PID 1, Compose `$$` escape, authent
 ## Kafka 단일 Compose service의 KRaft·listener·영구 저장·healthcheck
 
 - 기록일: 2026-08-10
-- 현재 상태: 설계와 작성 순서만 정리했으며 `infra/compose.yaml` 구현과 runtime 검증은 아직 하지 않음
+- 현재 상태: `infra/compose.yaml` 구현, Compose 정적 검사, 실제 `healthy` 전환, 내부·host listener,
+  produce/consume과 container 재생성 후 record 보존 검증을 모두 통과함
 - 질문: PostgreSQL, Redis와 MongoDB 다음 단계로 Kafka 단일 service를 어떤 설정으로 구성해야 하는가?
 
 ### 핵심 답변
@@ -1037,7 +1038,7 @@ KRaft는 ZooKeeper 없이 Kafka 자체 quorum으로 cluster metadata를 관리�
 한 process가 broker와 controller 역할을 함께 맡는 구성이며, 한 대로 동작 원리와 produce/consume을
 검증하는 local 환경에는 적합하지만 한 node가 중지되면 전체 cluster가 멈춘다.
 
-작성할 service의 목표 형태는 다음과 같다.
+구현하고 검증한 service는 다음과 같다.
 
 ```yaml
   kafka:
@@ -1211,23 +1212,52 @@ produce/consume과 data 보존은 별도 runtime 검증이 필요하다.
 - `TZ`: Kafka record timestamp는 epoch millisecond로 저장하며 broker 환경변수만으로 event time 규칙을
   만들지 않는다. M4에서 `occurredAt`과 `receivedAt`을 UTC 값으로 생성하고 검사한다.
 
-### 작성 뒤 확인할 범위
+### 확인 방법과 검증 결과
 
-첫 검증은 저장소 root에서 공개 예시 값과 local 값을 사용한 Compose 정적 검사다.
+저장소 root에서 공개 예시 값과 local 값을 사용해 Compose model을 검사했다.
 
 ```powershell
 docker compose --env-file .\.env.example -f .\infra\compose.yaml config --quiet
 docker compose --env-file .\.env -f .\infra\compose.yaml config --quiet
 ```
 
-두 명령이 출력 없이 종료 코드 `0`이면 Compose 문법, 환경변수 치환과 named volume 참조를 읽을 수
-있다는 뜻이다. 정적 검사는 Kafka image pull, KRaft storage format, listener 연결이나 healthcheck
-command 실행까지 확인하지 않는다.
+두 명령은 모두 출력 없이 종료 코드 `0`으로 끝났다. 공개 예시 값으로 해석한 Compose model에서
+`apache/kafka:4.3.1`, `127.0.0.1:29092` host port, 세 listener, 단일 KRaft node, 내부 topic 설정,
+`kafka-data:/var/lib/kafka/data`와 Kafka Admin 요청 healthcheck를 확인했다. 이 정적 검사는 Compose
+문법, 환경변수 치환과 named volume 참조를 확인하지만 Kafka process를 실행하지는 않는다.
 
-정적 검사와 코드 리뷰를 통과한 뒤에만 Kafka service를 실제로 시작한다. Runtime 검증 범위는 image와
-server version, `healthy` 전환, 내부·host listener, topic create, produce/consume, container 재생성 후
-topic record 보존, named volume 종류와 최종 error log다. 이 결과가 모두 확인되기 전에는 Kafka 단일
-service 구현을 완료로 표시하지 않는다.
+사용자가 다음 명령을 실행했을 때 image pull, `stockcast_kafka-data` volume 생성과 `healthy` 전환이
+성공했다.
+
+```powershell
+docker compose --env-file .\.env -f .\infra\compose.yaml up -d --wait --wait-timeout 180 --no-deps kafka
+```
+
+실제 server version은 `4.3.1`, process 사용자는 `uid=1000(appuser)`, PID 1은 Java process였다.
+`kafka-cluster.sh cluster-id`와 `/var/lib/kafka/data/meta.properties`의 cluster ID는 Compose의
+`4L6g3nShT-eMCtK--X86sw`와 일치했고 node ID도 `1`이었다. 생성된 `server.properties`에서
+`broker,controller` 역할, controller voter, listener, 내부 topic replication factor와 ISR,
+`/var/lib/kafka/data` log directory가 Compose 값과 같음을 확인했다.
+
+Container 내부 client는 `kafka:19092`로 Admin 요청에 성공했다. Windows 공개 경로는 먼저
+`127.0.0.1:29092` TCP 연결을 확인하고, 자동 삭제되는 별도 Kafka client container를 host network에
+연결해 `localhost:29092`의 Kafka protocol과 advertised listener가 함께 동작하는지 확인했다. 이
+client의 `kafka-topics.sh --list`는 종료 코드 `0`으로 끝났다.
+
+고유한 임시 topic을 partition `1`, replication factor `1`, `min.insync.replicas=1`로 만들고 marker
+한 건을 produce한 뒤 같은 값을 consume했다. Kafka container만 `--force-recreate`한 결과 container
+ID는 변경됐지만 cluster ID와 `stockcast_kafka-data` volume은 유지됐고, 재생성 전 marker를 다시
+consume해 topic record 보존을 확인했다.
+
+재생성 뒤에도 container는 `healthy`, 마지막 healthcheck 종료 코드는 `0`, host Kafka protocol은
+정상이었다. 최근 Kafka log 200줄에서 `ERROR`와 `FATAL`은 0건이었다. 두 번의 검증 과정에서 만든
+고유 topic은 모두 삭제했으며, 남은 `__consumer_offsets`는 console consumer가 사용한 Kafka 내부
+topic이다.
+
+첫 자동 검증에서는 Kafka 4.3.1 console consumer가 KIP-848 안내를 표준 오류 출력에 기록했고,
+PowerShell의 `ErrorActionPreference=Stop`이 이를 명령 실패로 오판했다. Kafka 장애가 아니었으며 임시
+topic 정리 후, 안내 출력과 process 종료 코드를 분리하고 marker 일치 여부를 직접 검사하는 방식으로
+재실행해 전체 검증을 통과했다.
 
 ### 흔한 오해
 
