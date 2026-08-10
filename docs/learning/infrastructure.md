@@ -671,3 +671,157 @@ SQL을 표준 입력이나 file에서 읽을 수 있고, script에서 `ON_ERROR_
 
 답변 keyword: PowerShell string, native command argument, `sh -c`, nested quoting, standard input,
 pseudo-TTY 비활성화, SQL error의 non-zero exit, secret을 literal command에 넣지 않기.
+
+## Redis Compose의 인증과 재생성 가능한 cache persistence
+
+- 기록일: 2026-08-10
+- 현재 상태: `infra/compose.yaml` 작성, Compose 설정 검사, 실제 `healthy` 전환, 인증과 재시작 후
+  data 소멸 검증을 모두 통과함
+- 질문: Docker Official Image의 Redis에 인증을 어떻게 적용하고, 재생성 가능한 cache라는 책임에
+  맞춰 volume과 persistence를 어떻게 정해야 하는가?
+
+### 핵심 답변
+
+Docker Official Image의 Redis는 `REDIS_PASSWORD`라는 환경변수만 전달해도 server 인증을 자동으로
+설정하지 않는다. 현재 service는 같은 local password를 두 가지 명시적인 용도로 연결한다.
+
+```yaml
+environment:
+  REDISCLI_AUTH: "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"
+command:
+  - redis-server
+  - --requirepass
+  - "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"
+```
+
+`--requirepass`는 Redis server의 기본 사용자에 password 인증을 적용한다. `REDISCLI_AUTH`는 server
+설정이 아니라 `redis-cli` client가 접속할 때 사용할 password를 전달하는 공식 환경변수다. 둘 중
+server command를 생략하면 Redis가 인증을 요구하지 않고, client 환경변수를 생략하면 인증이 필요한
+healthcheck가 `PONG`을 받을 수 없다.
+
+[Docker Official Image의 Redis 안내](https://github.com/docker-library/docs/blob/master/redis/content.md)는
+외부에 공개하는 Redis에 password 설정을 권장하며, image의
+[entrypoint](https://github.com/redis/docker-library-redis/blob/master/docker-entrypoint.sh)는
+`REDIS_PASSWORD`를 자동 처리하지 않는다. [Redis `AUTH` 문서](https://redis.io/docs/latest/commands/auth/)는
+`requirepass`가 설정된 server에서 password로 연결을 인증하는 동작을 설명한다.
+
+### `command`와 `redis.conf`, secret 노출 경계
+
+Redis는 `redis.conf`의 설정을 `--requirepass`처럼 `--`가 붙은 command argument로도 받을 수 있다.
+현재 M1은 인증과 persistence 관련 설정만 필요하므로 별도 설정 파일 대신 Compose의 `command`를
+선택했다. [Redis configuration 문서](https://redis.io/docs/latest/operate/oss_and_stack/management/config/)는
+command argument가 config file과 같은 설정을 임시 구성으로 전달한다고 설명한다.
+
+이 방식은 local 학습 환경의 단순성을 얻는 대신 secret 노출 범위가 넓어진다. Local `.env` 값은
+Compose가 container command와 `REDISCLI_AUTH` 환경변수에 넣으므로, 실제 `.env`를 사용한
+`docker compose config` 출력이나 container metadata를 공유하면 password가 노출될 수 있다.
+따라서 local 설정 검사는 출력이 없는 `config --quiet`로 실행하고 실제 값은 문서와 Git에 남기지 않는다.
+
+설정 항목이 늘어나면 `redis.conf`가 관리하기 쉽지만, 추적되는 설정 파일에 실제 password를 쓰는
+것도 안전하지 않다. 운영 환경에서는 Docker secret과 별도 ACL file을 mount해 command와 일반
+환경변수에 실제 password가 직접 들어가는 범위를 줄여야 한다. ACL은 Redis 사용자별로 접근 가능한
+command와 key를 제한하는 기능이며, 현재 M1의 단일 local 사용자는 기본 사용자 인증까지만 검증한다.
+
+### named volume을 사용하지 않는 이유
+
+현재 Redis는 latest price와 latest prediction처럼 PostgreSQL 또는 event에서 다시 만들 수 있는
+cache를 저장한다. Redis가 비어도 PostgreSQL fallback과 event 재처리로 복구할 수 있어야 하므로
+PostgreSQL과 같은 named volume을 사용하지 않는다.
+
+```yaml
+command:
+  - redis-server
+  - --requirepass
+  - "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"
+  - --save
+  - ""
+  - --appendonly
+  - "no"
+tmpfs:
+  - /data
+```
+
+RDB는 일정 시점의 Redis data를 snapshot file로 저장하는 방식이며 `--save ""`로 끈다. AOF는 write
+command를 file에 이어서 기록하는 방식이며 `--appendonly no`로 끈다. `tmpfs`는 container가 중지되면
+내용이 사라지는 memory 기반 임시 filesystem이며, Redis image의 data directory인 `/data`에 연결한다.
+이 조합은 cache를 disk에 우연히 남기거나 이름 없는 volume을 만드는 대신 재시작 시 비우는 정책을
+명시한다.
+
+[Redis persistence 문서](https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/)는
+cache처럼 다시 만들 수 있는 data에 persistence를 완전히 끄는 선택을 설명한다.
+[Docker tmpfs 문서](https://docs.docker.com/engine/storage/tmpfs/)는 tmpfs data가 container 중지 시
+제거되며 host나 container filesystem에 지속되지 않는다고 설명한다.
+
+Cache data를 잃어도 된다는 결정은 장애 영향이 없다는 뜻이 아니다. Redis 재시작 직후에는 cache
+miss가 늘고 PostgreSQL 조회 부하가 증가한다. M7에서는 fallback, TTL과 event 재처리로 cache를 다시
+채우는 동작을 구현하고 검증해야 한다. `maxmemory`와 eviction policy도 실제 key 크기와 수명을 알 수
+있는 M7에서 결정한다. Eviction policy는 Redis memory가 한도에 도달했을 때 어떤 key를 제거할지 정하는
+규칙이다.
+
+### 인증을 포함한 healthcheck
+
+현재 healthcheck는 다음 명령으로 Redis protocol 응답과 인증을 함께 확인한다.
+
+```yaml
+healthcheck:
+  test:
+    - CMD-SHELL
+    - redis-cli -h 127.0.0.1 -p 6379 ping | grep -qx PONG
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 5s
+```
+
+`redis-cli`는 container 환경의 `REDISCLI_AUTH`를 읽어 먼저 인증한다. `grep -qx PONG`은 응답 한 줄
+전체가 `PONG`일 때만 종료 코드 `0`을 반환한다. 실제 검증에서 인증 환경변수를 제거한
+`redis-cli ping`은 `NOAUTH Authentication required.`를 출력했지만 `redis-cli` 자체의 종료 코드는
+`0`이었다. 따라서 `redis-cli ping`만 healthcheck에 사용하면 인증 실패를 성공으로 오판할 수 있으며,
+응답 내용까지 확인하는 `grep`이 필요하다.
+
+`start_period`는 PostgreSQL의 database cluster 초기화와 같은 긴 작업이 없어 `5s`로 설정했다.
+Healthcheck가 인증을 통과했다는 사실은 ACL 권한 범위나 application의 실제 cache read/write까지
+보장하지 않으며, 이 범위는 M7 통합 테스트에서 별도로 확인한다.
+
+### 확인 방법과 검증 결과
+
+저장소 root에서 공개 가능한 예시 값과 local 값을 사용해 Compose model을 검사했다.
+
+```powershell
+docker compose --env-file .\.env.example -f .\infra\compose.yaml config --quiet
+docker compose --env-file .\.env -f .\infra\compose.yaml config --quiet
+```
+
+두 명령 모두 종료 코드 `0`이었다. 예시 값으로 해석한 model에서 `redis:8.2.8-bookworm`,
+`127.0.0.1:6379`, `redis-server --requirepass`, 빈 `save`, `appendonly=no`, `/data` tmpfs와 인증된
+healthcheck를 확인했다. Local 명령은 실제 password를 출력하지 않았다.
+
+`docker compose up -d --wait --wait-timeout 120 redis`는 종료 코드 `0`이었고 service가 `healthy`로
+전환됐다. 미인증 `PING`은 `NOAUTH`, container 내부와 `127.0.0.1:6379` 공개 경로를 통한 인증된
+`PING`은 모두 `PONG`이었다. Redis PID 1은 `uid 999`로 실행됐다.
+
+Runtime 설정은 `save`가 빈 값이고 `appendonly`가 `no`, data directory가 `/data`인 것을 확인했다.
+Docker container 설정의 `/data` mount는 실제 `tmpfs`였고 `stockcast` 이름의 volume은 기존
+`stockcast_postgres-data`만 존재했다. 검증 key를 저장한 뒤 Redis를 재시작했을 때 `EXISTS` 결과가
+`1`에서 `0`으로 바뀌었고 `/data`에는 persistence file이 없었다. 이는 data 유실이 현재 cache 책임에
+맞춘 의도된 동작임을 실제로 확인한 결과다.
+
+### 흔한 오해
+
+- `.env`에 `REDIS_PASSWORD`가 있으면 server가 자동으로 인증을 요구한다: Official Image에는 그런
+  자동 연결이 없으므로 `requirepass`나 ACL 설정이 별도로 필요하다.
+- `REDISCLI_AUTH`가 server password를 설정한다: 이 변수는 `redis-cli` client 인증에만 사용된다.
+- `redis-cli ping`의 종료 코드 `0`이면 인증까지 성공했다: 실제로 `NOAUTH`도 종료 코드 `0`이었으므로
+  응답이 정확히 `PONG`인지 확인해야 한다.
+- Cache이므로 persistence 설정을 생략해도 항상 data가 사라진다: Redis 기본 RDB와 image의 `/data`
+  volume 경계 때문에 수명이 불명확해질 수 있어 비영구 정책을 명시해야 한다.
+- Redis data가 재생성 가능하면 장애 영향이 없다: 재구축 동안 cache miss와 기준 DB 부하가 증가하므로
+  fallback과 복구 시간을 검증해야 한다.
+
+### 면접 질문
+
+질문: PostgreSQL에는 named volume을 사용하면서 Redis에는 RDB와 AOF를 끄고 tmpfs를 사용한 이유는
+무엇이며, Redis healthcheck에서 응답 text까지 확인한 이유는 무엇인가?
+
+답변 keyword: source of truth와 regenerable projection, PostgreSQL fallback, RDB와 AOF 비활성화,
+tmpfs lifecycle, `requirepass`, `REDISCLI_AUTH`, `NOAUTH`의 종료 코드 0, 정확한 `PONG` 확인.
