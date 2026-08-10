@@ -1023,3 +1023,232 @@ Runtime 검증용 JavaScript를 `sh -c` 안의 `mongosh --eval "..."` 인자로 
 답변 keyword: empty data directory, first initialization, `admin` authentication database,
 named volume, temporary init `mongod`, final PID 1, Compose `$$` escape, authenticated ping,
 정적 검사와 runtime 검증의 구분.
+
+## Kafka 단일 Compose service의 KRaft·listener·영구 저장·healthcheck
+
+- 기록일: 2026-08-10
+- 현재 상태: 설계와 작성 순서만 정리했으며 `infra/compose.yaml` 구현과 runtime 검증은 아직 하지 않음
+- 질문: PostgreSQL, Redis와 MongoDB 다음 단계로 Kafka 단일 service를 어떤 설정으로 구성해야 하는가?
+
+### 핵심 답변
+
+M1에서는 Apache Kafka Official Image `apache/kafka:4.3.1` 한 개를 KRaft combined mode로 실행한다.
+KRaft는 ZooKeeper 없이 Kafka 자체 quorum으로 cluster metadata를 관리하는 방식이다. Combined mode는
+한 process가 broker와 controller 역할을 함께 맡는 구성이며, 한 대로 동작 원리와 produce/consume을
+검증하는 local 환경에는 적합하지만 한 node가 중지되면 전체 cluster가 멈춘다.
+
+작성할 service의 목표 형태는 다음과 같다.
+
+```yaml
+  kafka:
+    image: apache/kafka:4.3.1
+    ports:
+      - "${HOST_BIND_ADDRESS}:${KAFKA_HOST_PORT}:9092"
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_LISTENERS: "CONTROLLER://:29093,PLAINTEXT://:19092,PLAINTEXT_HOST://:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:19092,PLAINTEXT_HOST://localhost:${KAFKA_HOST_PORT}"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+      CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: "1"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --list > /dev/null 2>&1
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+```
+
+Top-level `volumes`에는 기존 항목을 유지하면서 다음 항목만 추가한다.
+
+```yaml
+volumes:
+  postgres-data:
+  mongo-data:
+  kafka-data:
+```
+
+Apache Kafka 4.3.1은 2026-06-25 공개된 현재 지원 release이며, patch version까지 고정해 다른 개발
+환경에서도 같은 broker를 받게 한다. `latest`는 새 release가 나오면 가리키는 image가 바뀌므로 현재
+프로젝트의 재현성 기준에 맞지 않는다. JVM 기반 `apache/kafka`를 사용하고, Apache가 실험적인 local
+개발용으로 설명하는 `apache/kafka-native`는 선택하지 않는다.
+
+근거는 [Apache Kafka 4.3 Docker 문서](https://kafka.apache.org/43/getting-started/docker/),
+[Apache Kafka 4.3.1 download 안내](https://kafka.apache.org/community/downloads/)와
+[4.3.1 single-node Compose 예제](https://github.com/apache/kafka/blob/4.3.1/docker/examples/docker-compose-files/single-node/plaintext/docker-compose.yml)를
+따른다.
+
+### KRaft node와 controller quorum
+
+`KAFKA_NODE_ID: "1"`은 이 Kafka process의 고유 node 번호다. `KAFKA_PROCESS_ROLES`에
+`broker,controller`를 함께 지정해 event record를 저장하고 client 요청을 처리하는 broker 역할과
+cluster metadata를 관리하는 controller 역할을 한 process가 모두 맡게 한다.
+
+`KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"`는 node `1`의 controller가 Compose service
+DNS `kafka`와 port `29093`에 있다는 뜻이다. Quorum은 여러 controller가 cluster metadata 변경에
+합의하는 집합이지만, 현재는 voter가 한 개뿐이므로 과반수 장애를 견디지 못한다. Local 학습 환경의
+단순함을 얻는 대신 고가용성을 포기하는 구성이다.
+
+`CLUSTER_ID`는 KRaft metadata와 log directory가 어느 cluster에 속하는지 식별한다. Password나 token은
+아니므로 Official Example의 유효한 UUID를 local project에서 고정해서 사용한다. `kafka-data` volume을
+유지한 채 이 값을 바꾸면 저장된 metadata의 cluster ID와 새 설정이 달라 Kafka가 시작되지 않을 수
+있다. 별도 local ID를 만들고 싶다면 `kafka-storage.sh random-uuid`로 한 번 생성한 뒤 처음부터 같은
+값을 계속 사용해야 한다.
+
+ZooKeeper service는 추가하지 않는다. Kafka 4.x는 KRaft만 지원하므로 ZooKeeper를 함께 구성하면
+현재 version의 구조와 맞지 않고 불필요한 process와 저장 공간만 늘어난다. Production용 multi-node
+controller 분리도 M1의 한 대짜리 runtime 검증 범위를 벗어나므로 지금은 제외한다.
+
+### `listeners`와 `advertised.listeners`
+
+`listeners`는 Kafka process가 실제로 요청을 받을 container 내부 socket을 정한다.
+`advertised.listeners`는 bootstrap 연결 뒤 Kafka가 client에게 "이후에는 이 주소로 접속하라"고
+돌려주는 주소다. Port mapping만 맞아도 advertised address가 잘못되면 client는 첫 연결 뒤 broker에
+다시 접속하지 못한다.
+
+현재 service는 세 listener를 사용한다.
+
+- `CONTROLLER://:29093`: controller 내부 통신용이며 host에 공개하지 않는다.
+- `PLAINTEXT://:19092`: Kafka UI와 나중의 application container가 `kafka:19092`로 접속하는 경로다.
+- `PLAINTEXT_HOST://:9092`: Windows client가 host의 `localhost:${KAFKA_HOST_PORT}`로 접속하는 경로다.
+
+`KAFKA_LISTENER_SECURITY_PROTOCOL_MAP`은 세 listener 이름을 실제 protocol에 연결한다. 현재 모두
+`PLAINTEXT`이므로 암호화와 인증이 없다. Host 공개 port는 `HOST_BIND_ADDRESS=127.0.0.1`에 묶지만,
+같은 Compose network의 container는 내부 listener에 접속할 수 있다. M1은 local 기능 검증이 목적이므로
+SASL, TLS와 ACL을 제외하고, 외부 배포를 시작할 때 인증·암호화·권한을 함께 설계한다.
+
+`KAFKA_INTER_BROKER_LISTENER_NAME`은 broker 사이 통신에 `PLAINTEXT` listener를 사용하도록 정한다.
+지금 broker는 한 대뿐이지만, Official Image에 필요한 server 설정을 빠짐없이 제공하고 나중의
+multi-node 확장 경계를 드러내기 위해 명시한다. `KAFKA_CONTROLLER_LISTENER_NAMES`는 controller용
+listener가 `CONTROLLER`임을 정한다.
+
+### 단일 node용 내부 topic 설정
+
+Kafka는 consumer offset, transaction과 share group 상태도 내부 topic에 저장한다. Replication factor는
+topic data를 몇 broker에 복제할지를 뜻한다. Official Image 예제의 기본값 일부는 broker 세 대를
+가정하므로 한 대뿐인 M1에서는 다음 값을 모두 `1`로 맞춘다.
+
+- `KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR`: consumer가 처리한 위치를 저장하는 내부 topic 복제 수다.
+- `KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR`와 `MIN_ISR`: transaction 상태의 복제 수와 쓰기에
+  필요한 최소 정상 replica 수다. ISR은 leader와 같은 상태를 유지하는 replica 집합이다.
+- `KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR`와 `MIN_ISR`: share group coordinator의
+  내부 상태 topic에 같은 한-node 조건을 적용한다.
+
+이 값은 한 node에서 내부 topic 생성 실패를 막지만 데이터 복제본을 만들지는 않는다. Broker 또는
+Docker VM의 storage를 잃으면 named volume만으로 복구할 수 없으며, production에서는 broker 수와
+replication factor를 함께 늘려야 한다.
+
+`KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"`은 새 consumer group의 첫 rebalance 대기를 없애 local
+검증을 빠르게 한다. Rebalance는 consumer group 구성원에게 partition을 다시 배정하는 과정이다.
+여러 consumer가 순차적으로 시작하는 운영 환경에서는 불필요한 재배정 횟수와 시작 지연의 균형을
+측정한 뒤 값을 정해야 한다.
+
+### Kafka log와 named volume
+
+Kafka에서 log는 애플리케이션 실행 log만 뜻하지 않는다. Topic record와 KRaft metadata를 append-only
+segment file로 저장하는 event log도 포함한다. `KAFKA_LOG_DIRS: "/var/lib/kafka/data"`는 이 영구 data
+경로를 명시하고 `kafka-data` named volume을 같은 위치에 연결한다.
+
+Apache Kafka 4.3.1 JVM image는 `/var/lib/kafka/data`를 만들고 `appuser`가 쓸 수 있게 권한을 설정하며,
+Docker `VOLUME` 경로로 선언한다. 이 경로를 명시적인 named volume에 연결하지 않으면 Docker가 이름
+없는 volume을 만들 수 있어 data 수명과 정리 대상이 불명확해진다. 근거는
+[Apache Kafka 4.3.1 JVM Dockerfile](https://github.com/apache/kafka/blob/4.3.1/docker/jvm/Dockerfile)이다.
+
+Redis는 재생성 가능한 cache라서 재시작 시 지우지만, Kafka는 아직 consumer가 처리하지 않은 event와
+replay 근거를 보관해야 하므로 tmpfs를 사용하지 않는다. Named volume은 container 재생성에는 견디지만
+단일 broker 장애, volume 삭제나 host 손실까지 보호하는 backup은 아니다.
+
+### Kafka protocol을 확인하는 healthcheck
+
+Healthcheck는 container process가 살아 있는지만 보지 않고 내부 listener로 Kafka Admin 요청을
+보낸다.
+
+```text
+kafka-topics.sh
+  -> kafka:19092 bootstrap 연결
+  -> broker metadata 요청
+  -> topic 목록 응답 성공
+  -> 종료 코드 0
+```
+
+단순 TCP port 검사는 socket이 열렸다는 사실만 확인하며 broker가 metadata 요청을 처리할 준비가
+됐는지는 보장하지 않는다. `kafka-topics.sh --list`는 topic이 하나도 없어도 broker가 정상 응답하면
+성공한다. 출력은 healthcheck log를 불필요하게 늘리지 않도록 버리지만, 실패하면 종료 코드가 0이
+아니므로 Docker가 `unhealthy`로 판단한다.
+
+Healthcheck가 host용 listener 대신 `kafka:19092`를 사용하는 이유는 bootstrap 뒤 broker가 내부
+client에게 `kafka:19092`를 다시 알려주기 때문이다. Container 안에서 host용 advertised address인
+`localhost:${KAFKA_HOST_PORT}`를 사용하면 `localhost`가 Windows가 아니라 Kafka container 자신을
+가리켜 후속 연결이 실패할 수 있다.
+
+Kafka CLI도 JVM을 시작하므로 PostgreSQL이나 Redis 검사보다 시간이 더 걸릴 수 있다. 그래서
+`timeout: 10s`, `retries: 10`, `start_period: 30s`로 초기 KRaft storage format과 broker 기동 시간을
+허용한다. 이 healthcheck는 Kafka protocol 응답만 확인하며 host 공개 port, topic 생성,
+produce/consume과 data 보존은 별도 runtime 검증이 필요하다.
+
+### 이번 단계에서 넣지 않는 항목
+
+- Kafka UI와 `depends_on`: 다음 독립 TODO에서 Kafka가 healthy인 경우에만 UI가 시작되게 연결한다.
+- Application topic 자동 생성: M4에서 partition, key와 retention 계약을 정한 뒤 명시적으로 생성한다.
+- SASL, TLS와 ACL: loopback local 검증에서는 제외하고 외부 접근이 생기기 전에 함께 도입한다.
+- Multi-node broker와 controller 분리: replication과 장애 조치를 검증하는 고도화 단계에서 추가한다.
+- `container_name`, custom network와 `restart`: Compose의 project 격리와 default network를 유지하고
+  전체 service 장애 정책이 정해진 뒤 추가한다.
+- `TZ`: Kafka record timestamp는 epoch millisecond로 저장하며 broker 환경변수만으로 event time 규칙을
+  만들지 않는다. M4에서 `occurredAt`과 `receivedAt`을 UTC 값으로 생성하고 검사한다.
+
+### 작성 뒤 확인할 범위
+
+첫 검증은 저장소 root에서 공개 예시 값과 local 값을 사용한 Compose 정적 검사다.
+
+```powershell
+docker compose --env-file .\.env.example -f .\infra\compose.yaml config --quiet
+docker compose --env-file .\.env -f .\infra\compose.yaml config --quiet
+```
+
+두 명령이 출력 없이 종료 코드 `0`이면 Compose 문법, 환경변수 치환과 named volume 참조를 읽을 수
+있다는 뜻이다. 정적 검사는 Kafka image pull, KRaft storage format, listener 연결이나 healthcheck
+command 실행까지 확인하지 않는다.
+
+정적 검사와 코드 리뷰를 통과한 뒤에만 Kafka service를 실제로 시작한다. Runtime 검증 범위는 image와
+server version, `healthy` 전환, 내부·host listener, topic create, produce/consume, container 재생성 후
+topic record 보존, named volume 종류와 최종 error log다. 이 결과가 모두 확인되기 전에는 Kafka 단일
+service 구현을 완료로 표시하지 않는다.
+
+### 흔한 오해
+
+- Host port mapping만 맞으면 Kafka client가 연결된다: bootstrap 뒤 전달되는 advertised listener도
+  client가 실제로 접근할 수 있어야 한다.
+- `localhost`는 어디서나 Windows host다: container 안에서는 그 container 자신을 가리키므로
+  container client는 `kafka:19092`를 사용해야 한다.
+- KRaft를 쓰면 broker와 controller를 항상 분리해야 한다: 한-node local 환경에서는 combined mode가
+  가능하지만 고가용성은 없다.
+- Replication factor를 `1`로 설정하면 복제가 된다: replica가 한 개뿐이므로 broker 장애를 견디지
+  못하며 단일 node 실행을 가능하게 할 뿐이다.
+- Named volume이 있으면 Kafka data가 안전하다: container 재생성에는 보존되지만 volume이나 host가
+  사라지는 장애를 막지는 못한다.
+- Healthcheck가 통과하면 produce/consume도 검증됐다: Admin 요청 성공과 record 왕복·지속성은 서로
+  다른 검증이다.
+
+### 면접 질문
+
+질문: Docker Compose의 Kafka에 host용 listener와 container용 listener를 따로 둔 이유는 무엇이며,
+single-node KRaft에서 internal topic replication factor를 `1`로 설정한 의미와 한계는 무엇인가?
+
+답변 keyword: bootstrap과 advertised listeners, `localhost`와 Compose service DNS, combined
+broker/controller, controller quorum, single broker, internal topic, replication factor와 ISR,
+named volume, Admin protocol healthcheck, local-only plaintext.
