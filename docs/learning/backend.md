@@ -195,3 +195,133 @@ Java 21 runtime을 다시 고른다. Oracle JDK의 상용 지원이나 license�
 
 답변 keyword: `java` launcher와 JVM, `javac` compiler, JDK와 JRE 차이, compile time과 runtime,
 major version 21 일치, `PATH`, `JAVA_HOME`, Gradle 실행 전 사전검증
+
+## Spring Initializr 설정과 M2 최소 dependency
+
+- 기록일: 2026-08-11
+
+### 질문
+
+Java 21 JDK 사전검증이 끝난 뒤 Spring Initializr에서 어떤 값을 선택해야 하며, M2 기본 project에는
+어떤 dependency만 넣어야 하는가?
+
+### 핵심 답변
+
+Spring Initializr는 선택한 build tool, Java version, Spring Boot version과 dependency를 바탕으로
+Gradle Wrapper, build script, main application class와 기본 test를 만들어 주는 project 생성기다.
+애플리케이션을 실행하는 framework 자체가 아니라 처음 시작할 파일 구조와 build 설정을 일관되게
+생성하는 도구다.
+
+현재 StockCast 기준의 project metadata는 다음과 같다.
+
+| 항목 | 값 | 선택 이유 |
+|---|---|---|
+| Project | `Gradle - Kotlin` | 확정된 Gradle Kotlin DSL을 사용해 `build.gradle.kts`를 생성한다. |
+| Language | `Java` | Spring application source는 Java 21로 작성한다. Kotlin DSL은 build script 언어일 뿐 application 언어를 Kotlin으로 바꾸지 않는다. |
+| Group | `com.stockcast` | 생성 artifact의 group 좌표를 프로젝트 기준과 맞춘다. |
+| Artifact | `backend-spring` | 기존 component 디렉터리와 Gradle project 이름을 맞춘다. |
+| Name | `backend-spring` | 생성되는 project 표시 이름을 component 이름과 맞춘다. |
+| Description | `StockCast Spring Boot backend` | project의 책임을 짧게 드러낸다. |
+| Package name | `com.stockcast` | main application class를 최상위 package에 두어 이후 하위 package를 component scan 범위에 포함한다. |
+| Packaging | `Jar` | embedded server와 함께 실행 가능한 단일 JAR로 build한다. 별도 servlet container에 배포하는 WAR는 필요하지 않다. |
+| Java | `21` | 사전검증을 마친 JDK major version과 compile target을 맞춘다. |
+| Configuration | `Properties` | M2 첫 구성에서는 들여쓰기 오류가 없는 `application.properties`로 외부 설정을 학습한다. YAML도 가능하지만 지금 얻는 기능 차이는 없다. |
+
+M2 project 생성 시 직접 선택할 dependency는 다음 세 개다.
+
+- `Spring Web`: Spring MVC, JSON 응답 처리와 embedded Tomcat을 제공한다. M2의 REST API와 invalid
+  request 오류 계약을 만들기 위한 HTTP 경계다.
+- `Validation`: request DTO의 값 규칙을 annotation으로 선언하고 위반을 400 오류 계약으로 변환할
+  기반을 제공한다. 아직 request DTO를 만들지 않아도 M2 완료 기준에 포함될 기능이다.
+- `Spring Boot Actuator`: `/actuator/health` 같은 관리 endpoint를 제공한다. M2 완료 기준의 health API를
+  별도의 사용자 기능 controller로 흉내 내지 않고 실제 application 상태 경계로 검증할 수 있다.
+
+Spring Initializr가 생성하는 `spring-boot-starter-test`는 별도의 Dependencies 검색 항목으로 추가하지
+않아도 된다. 생성된 context test와 이후 단위·통합 test의 공통 기반으로 사용한다.
+
+### 현재 Spring Boot version 충돌
+
+프로젝트 문서는 Java 21과 Spring Boot 3.x를 확정 기준으로 사용한다. 공식 Spring Boot 문서에서
+`3.5.16`은 Java 17부터 Java 25까지 지원하므로 Java 21과 호환된다. 다만 2026-08-11 현재 공식
+`start.spring.io` metadata에는 `4.1.0`, `4.0.7`과 각 snapshot만 표시되고 3.x는 없다. 실제
+`bootVersion=3.5.16` 생성 요청도 `Invalid Spring Boot version '3.5.16', Spring Boot compatibility
+range is >=4.0.0`이라는 400 응답으로 거부됐다.
+
+따라서 다음 두 경로를 구분해야 한다.
+
+1. 기존 Spring Boot 3.x 기준 유지: Initializr UI 대신 Spring Boot `3.5.16`과 지원 범위 안의 Gradle
+   8 Wrapper를 사용하는 project를 수동으로 구성한다.
+2. 현재 공식 Initializr 사용: project 기준을 Spring Boot `4.1.0`으로 변경한 뒤 Initializr에서
+   project를 생성한다.
+
+Spring Boot 3.x에서 4.x로 바꾸는 것은 단순한 patch version 선택이 아니라 major version 변경이다.
+major version 변경은 호환되지 않는 API나 기본 동작이 바뀔 수 있는 큰 version 변경을 뜻한다. 따라서
+Initializr 화면에 4.x만 보인다는 이유로 사용자의 결정 없이 project 기준을 바꾸지 않는다.
+
+공식 근거:
+
+- [Spring Initializr Reference Guide](https://docs.spring.io/initializr/docs/current/reference/html/)
+- [Spring Boot 3.5.16 System Requirements](https://docs.spring.io/spring-boot/3.5/system-requirements.html)
+- [Spring Boot 3.5.16 release](https://spring.io/blog/2026/06/25/spring-boot-3-5-16-available-now/)
+- [Spring Boot Actuator 시작 가이드](https://spring.io/guides/gs/actuator-service/)
+
+### 프로젝트에서의 연결
+
+이번 project 생성은 `backend-spring/`에 Gradle Wrapper, `build.gradle.kts`, Java main source와 context
+test를 만드는 데까지만 해당한다. profile, 공통 오류 계약, health 공개 범위와 실제 실행 검증은 생성된
+파일을 먼저 확인한 뒤 별도의 작은 TODO로 진행한다. `backend-spring/README.md`는 component 책임을
+설명하는 기존 문서이므로 project 파일을 배치할 때 보존한다.
+
+### 지금 제외하는 dependency와 이유
+
+- `Spring Data JPA`와 `PostgreSQL Driver`: M3에서 Stock domain, migration과 transaction 경계를 함께
+  도입한다. 지금 넣으면 DB 설정이 없는 M2 context test가 불필요하게 실패할 수 있다.
+- `Spring for Apache Kafka`: M4의 topic, producer와 `FakeMarketDataGenerator`를 학습할 때 추가한다.
+- `Spring Data MongoDB`: M5의 raw event 저장 책임과 함께 추가한다.
+- `Spring Data Redis`: 최신 상태 cache와 PostgreSQL fallback을 구현하는 마일스톤까지 미룬다.
+- `Docker Compose Support`: 현재 `infra/compose.yaml`의 시작·중지는 사용자가 별도로 관리한다. Spring
+  application 시작이 인프라 생명주기를 암묵적으로 제어하지 않게 한다.
+- `Spring Boot DevTools`: 자동 재시작은 편리하지만 build와 runtime 검증에 필수는 아니다. 기본 실행
+  흐름을 확인한 뒤 개발 편의가 실제로 필요할 때 추가한다.
+- `Lombok`: generated code가 학습 중인 Java class의 실제 생성자와 method를 숨길 수 있어 처음에는
+  명시적인 Java code를 사용한다.
+- `Spring Security`: 인증·인가는 M2 health와 오류 계약의 완료 조건이 아니므로 선택 확장 단계까지
+  미룬다.
+- `Spring Configuration Processor`: custom `@ConfigurationProperties` class를 만들 때 IDE의 설정 key
+  자동완성이 필요해지면 추가한다.
+
+### 흔한 오해와 실패 영향
+
+- `Gradle - Kotlin`을 고르면 application도 Kotlin이라는 오해: Kotlin DSL은 build script에만
+  적용되며 Language를 `Java`로 선택하면 source는 Java로 생성된다.
+- 사용할 예정인 dependency를 모두 처음부터 추가하는 방식: auto-configuration이 DB나 외부 service
+  연결을 시도해 아직 책임이 없는 M2 test와 실행을 실패시킬 수 있다.
+- JDK 21이 설치됐으므로 Java 항목은 기본값이어도 된다는 오해: 현재 Initializr 기본값은 Java 17이므로
+  `21`을 직접 선택해야 build target이 project 기준과 일치한다.
+- ZIP을 기존 `backend-spring/` 위에 무조건 덮어쓰는 방식: 기존 책임 문서인 `README.md`를 잃거나
+  `backend-spring/backend-spring/`처럼 디렉터리가 중복될 수 있다. 압축 내부 구조를 확인한 뒤 기존
+  디렉터리에 생성 파일만 배치해야 한다.
+
+### 생성 후 확인 방법
+
+project를 생성한 뒤에는 아직 application runtime이 정상이라고 판단하지 않는다. 먼저 다음 구조만
+확인한다.
+
+- `backend-spring/gradlew`와 `backend-spring/gradlew.bat`
+- `backend-spring/gradle/wrapper/`
+- `backend-spring/build.gradle.kts`
+- `backend-spring/settings.gradle.kts`
+- `backend-spring/src/main/java/com/stockcast/`
+- `backend-spring/src/test/java/com/stockcast/`
+- 기존 `backend-spring/README.md`
+
+그다음 생성된 build file과 Wrapper version을 검토하고 `gradlew.bat test`를 실행해야 dependency download,
+compile과 context test까지 검증할 수 있다. 파일이 존재한다는 사실만으로 build와 runtime이 통과했다고
+말하지 않는다.
+
+### 면접 질문과 답변 keyword
+
+질문: Spring Boot project를 시작할 때 필요한 dependency를 모두 한 번에 추가하지 않은 이유는 무엇인가?
+
+답변 keyword: milestone별 책임, classpath 기반 auto-configuration, 불필요한 외부 연결 방지, 실패 범위
+축소, Spring Web·Validation·Actuator의 M2 완료 기준, persistence와 messaging의 지연 도입
