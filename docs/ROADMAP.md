@@ -14,7 +14,7 @@
 |---|---|---|---|
 | M0 | Repository 초기화와 설계 기준 | DONE | `docs/project-foundation` |
 | M1 | Docker Compose 인프라 | DONE | `infra/local-compose` |
-| M2 | Spring Boot 기본 구성 | NOT_STARTED | `feat/spring-bootstrap` |
+| M2 | Spring Boot 기본 구성 | IN_PROGRESS | `feat/spring-bootstrap` |
 | M3 | PostgreSQL과 Stock 도메인 | NOT_STARTED | `feat/stock-domain` |
 | M4 | Kafka 기본과 FakeMarketDataGenerator | NOT_STARTED | `feat/fake-market-producer` |
 | M5 | MongoDB raw event 저장 | NOT_STARTED | `feat/raw-event-archive` |

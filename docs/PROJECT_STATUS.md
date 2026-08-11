@@ -2,11 +2,11 @@
 
 ## 문서 메타데이터
 
-- 마지막 업데이트: 2026-08-10
+- 마지막 업데이트: 2026-08-11
 - 최근 완료 마일스톤: M1. Docker Compose 인프라
-- 현재 마일스톤: M1. Docker Compose 인프라
-- 상태: DONE
-- 다음 마일스톤: M2. Spring Boot 기본 구성
+- 현재 마일스톤: M2. Spring Boot 기본 구성
+- 상태: IN_PROGRESS
+- 다음 마일스톤: M3. PostgreSQL과 Stock 도메인
 
 ## 현재 요약
 
@@ -44,6 +44,13 @@ MongoDB와 Kafka는 약 17.2초, Kafka UI는 Kafka의 `healthy` 전환 뒤 약 2
 `stockcast-local ONLINE`을 확인했다. 이 결과로 M1의 전체 Compose 재현과 핵심 접속 경로 검증을
 완료했다.
 
+M2의 첫 TODO로 Java 21 JDK 실행 환경 사전검증을 시작했다. `java -version`과 `javac -version`은
+모두 종료 코드 `0`으로 실행됐지만 각각 `java version "17"`과 `javac 17`을 출력했다. 현재
+PowerShell에서 JDK 17의 실행기와 컴파일러가 정상 동작한다는 점은 확인됐지만 프로젝트 기준인
+Java 21은 검증되지 않았다. Spring Boot source와 Gradle Wrapper는 아직 생성하지 않았으며,
+다음에는 실제 실행 파일 경로와 `JAVA_HOME`을 확인해 Java 21 미설치와 경로 우선순위 문제를
+구분한다.
+
 구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
 중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
 network 경계를 문서화했다.
@@ -76,10 +83,11 @@ network 경계를 문서화했다.
 - Kafka UI host HTTP, `ONLINE` cluster, broker·topic 조회와 오류 log 부재 검증
 - 다섯 service의 강제 재생성, 동시 `healthy` 전환과 loopback 공개 port 검증
 - 전체 service 실행 중 PostgreSQL·Redis·MongoDB 인증 접속, Kafka host listener와 Kafka UI cluster 조회 검증
+- M2 Java 21 JDK 사전검증 기준과 실패 조건 문서화
 
 ## 아직 구현되지 않은 항목
 
-- Spring Boot source와 Gradle build
+- Java 21 JDK 실행 환경 검증, Spring Boot source와 Gradle build
 - FastAPI source와 Python package
 - DB schema와 migration
 - Kafka application topic과 producer/consumer
@@ -215,10 +223,13 @@ network 경계를 문서화했다.
 | 2026-08-10 | 전체 Compose 상태와 공개 port | 다섯 service가 계속 `healthy`; `127.0.0.1`의 PostgreSQL 5432, Redis 6379, MongoDB 27017, Kafka 29092와 Kafka UI 8088 mapping 확인 |
 | 2026-08-10 | 전체 핵심 접속 경로 | PostgreSQL `SELECT 1`, Redis `PONG`, MongoDB `MONGO_OK`, Kafka `__consumer_offsets`와 Kafka UI `stockcast-local ONLINE` 확인 |
 | 2026-08-10 | M1 `.gitignore` 최종 점검 | Compose service에 repository 내부 bind mount가 없고 named volume·tmpfs만 사용하므로 추가 ignore 규칙이 필요하지 않음 |
+| 2026-08-11 | Java 21 JDK 사전검증 | `java`와 `javac`는 종료 코드 `0`이지만 모두 version 17로 확인되어 Java 21 기준 미통과 |
 
 ## 알려진 실패와 blocker
 
-- 기능 blocker 없음
+- M1 기능 blocker는 없음
+- M2의 Java 21 JDK 사전검증은 현재 PowerShell이 version 17을 선택해 미통과 상태이며
+  `ERR-006`에 `OPEN`으로 기록함
 - 일반 `git status`는 샌드박스 사용자와 저장소 소유권 차이로 `dubious ownership` 오류 발생
 - 전역 Git 설정 대신 명령별 `safe.directory` 옵션으로 Git 명령을 실행함
 - 저장소 밖에서 실행한 `git check-ignore`와 파일명 오기입으로 인한 `.env.example` 검증 실패는
@@ -235,9 +246,10 @@ network 경계를 문서화했다.
 
 ## 다음 작업
 
-M2의 첫 단일 TODO로 현재 Windows 개발 환경의 Java 21 JDK를 `java -version`과 `javac -version`으로
-사전검증한다. Spring Boot project와 Gradle Wrapper 생성은 이 실행 환경을 확인한 뒤 시작한다.
+PowerShell에서 `where.exe java`, `where.exe javac`와 `JAVA_HOME`을 확인해 현재 선택된 JDK 17의
+실행 파일 경로와 환경 변수를 비교한다. 이 결과로 Java 21을 새로 설치해야 하는지, 이미 설치된
+Java 21의 경로를 선택하면 되는지 결정한다.
 
 ## 다음 채팅 시작 문장
 
-`M1 Docker Compose 인프라를 완료했어. M2 Spring Boot 기본 구성을 시작하기 전에 첫 TODO로 Java 21 JDK 실행 환경을 설명하고 검증할 수 있게 안내해줘.`
+`Java 21 JDK 사전검증에서 java와 javac가 모두 version 17로 나왔어. 실제 실행 파일 경로와 JAVA_HOME을 확인하는 다음 TODO를 안내해줘.`

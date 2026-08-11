@@ -25,6 +25,8 @@
 | ERR-002 | 2026-07-21 | M0 | RESOLVED | `.env.example` 경로를 찾지 못함 | 파일명 오기입으로 대상 파일이 없었음 |
 | ERR-003 | 2026-07-24 | M0 | RESOLVED | `new blank line at EOF` | README 끝에 개행이 두 개 있었음 |
 | ERR-004 | 2026-08-07 | M1 | RESOLVED | `psql`의 `CREATE` 구문이 끝에서 잘림 | 중첩된 셸에서 SQL 인자 경계가 사라짐 |
+| ERR-005 | 2026-08-10 | M1 | RESOLVED | Kafka UI cluster 값이 빈 표로 보임 | JSON 배열을 pipeline에서 펼치지 않음 |
+| ERR-006 | 2026-08-11 | M2 | OPEN | Java 21 사전검증에서 version 17 확인 | 현재 PowerShell이 JDK 17을 선택함 |
 
 ## ERR-001: 저장소를 찾지 못한 `git check-ignore`
 
@@ -117,6 +119,26 @@
 - 재발 방지: REST API의 최상위 응답이 JSON 배열이면 property 선택 전에 항목을 명시적으로 펼친다.
   응답 구조가 불명확하면 같은 선택 명령을 반복하지 않고 `ConvertTo-Json -Depth`로 원본 구조를
   먼저 확인한다.
+
+## ERR-006: Java 21 사전검증에서 선택된 JDK 17
+
+- 날짜: 2026-08-11
+- 마일스톤: M2. Spring Boot 기본 구성
+- 상태: `OPEN`
+- 실행 맥락: 새 PowerShell의 `C:\WINDOWS\system32`에서 Spring Boot project와 Gradle Wrapper를
+  만들기 전에 `java -version`과 `javac -version`을 실행했다.
+- 증상: `java version "17"`과 `javac 17`이 출력됐다. 두 명령의 종료 코드는 모두 `0`이었지만
+  프로젝트 기준인 major version `21`과 일치하지 않았다.
+- 원인: 현재 PowerShell의 명령 검색 결과가 과거에 설치한 Oracle JDK 17 계열의 `java`와 `javac`를
+  선택한다. Java 21이 설치되지 않은 것인지, 설치돼 있지만 `PATH` 우선순위 때문에 선택되지 않는
+  것인지는 아직 확인되지 않았다.
+- 해결 과정: Spring Boot project 생성은 시작하지 않았다. 다음 진단으로 `where.exe java`,
+  `where.exe javac`와 `JAVA_HOME`을 확인해 실제 실행 파일과 환경 변수의 방향을 비교한다.
+- 검증 결과: JDK 17의 실행기와 컴파일러가 모두 동작한다는 점은 확인됐다. Java 21 JDK 실행 환경은
+  아직 검증되지 않았으므로 이 항목을 `OPEN`으로 유지한다.
+- 재발 방지: JDK를 설치하거나 환경 변수를 바꾼 뒤에는 새 PowerShell을 열어 `java`와 `javac`의
+  실제 major version과 종료 코드를 다시 확인한다. Gradle Wrapper 생성과 build는 두 명령이 모두
+  프로젝트 기준 version을 가리킨 뒤 시작한다.
 
 ## 새 오류 기록 템플릿
 

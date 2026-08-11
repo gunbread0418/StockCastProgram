@@ -92,6 +92,18 @@ javac -version
 직접 compile하거나 Spring Boot를 실행하지 않으므로, 통과하더라도 아직 Gradle build와 애플리케이션
 runtime을 검증한 것은 아니다.
 
+### 실제 검증 결과
+
+2026-08-11에 사용자가 새 PowerShell에서 실행한 결과는 `java version "17"`, `javac 17`이었고
+두 명령의 종료 코드는 모두 `0`이었다. 이 결과는 Oracle JDK 17 계열의 실행기와 컴파일러가 현재
+PowerShell에서 정상적으로 선택된다는 사실을 확인한다. 그러나 프로젝트 기준인 major version
+`21`과 다르므로 Java 21 JDK 사전검증은 통과하지 못했다.
+
+검증을 `C:\WINDOWS\system32`에서 실행한 것은 버전 불일치의 원인이 아니다. `java`와 `javac`는
+현재 디렉터리보다 Windows의 명령 검색 경로인 `PATH`를 통해 선택되기 때문이다. 다음 단계에서는
+`where.exe`로 선택 가능한 실행 파일 경로를 확인하고 `JAVA_HOME`과 비교한다. Java 21이 설치되지
+않은 것인지, 설치돼 있지만 Java 17 경로가 먼저 선택되는 것인지는 아직 확인되지 않았다.
+
 ### 면접 질문과 답변 keyword
 
 질문: Spring Boot 개발 환경을 준비할 때 `java -version`과 `javac -version`을 왜 모두
