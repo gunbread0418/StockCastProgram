@@ -6,6 +6,16 @@ Spring Boot API, Java 도메인, Kafka producer/consumer, PostgreSQL·MongoDB·R
 `FakeMarketDataGenerator`를 소유한다. 저장 결과를 외부에 제공하고 Java 기반 이벤트
 파이프라인을 조정하는 애플리케이션 경계다.
 
+## 현재 기술 기준
+
+- Java 21
+- Spring Boot 4.1.0
+- Gradle Kotlin DSL과 Gradle Wrapper 9.5.1
+- Java base package `com.stockcast`
+
+M2에서 공식 Spring Initializr project를 생성했고 기본 context test와
+`/actuator/health`의 `UP` 응답을 검증했다.
+
 ## 포함할 항목
 
 - Gradle Wrapper와 Gradle Kotlin DSL 빌드 설정

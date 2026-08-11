@@ -7,7 +7,7 @@ PostgreSQL, MongoDB, Redis에 목적별로 저장한 뒤 FastAPI 기반 ML 서�
 이 프로젝트의 핵심은 자동매매나 예측 정확도 과장이 아니라 다음 역량을 직접 구현하고
 설명할 수 있게 만드는 것입니다.
 
-- Spring Boot 기반 API와 도메인 설계
+- Java 21과 Spring Boot 4.1.0 기반 API와 도메인 설계
 - Kafka producer, consumer group, offset, retry, DLQ와 재처리
 - SQL, NoSQL, cache의 책임 분리
 - Docker Compose 기반 로컬 인프라
@@ -28,8 +28,10 @@ PostgreSQL, MongoDB, Redis에 목적별로 저장한 뒤 FastAPI 기반 ML 서�
 
 ## 현재 상태
 
-`M0. Repository 초기화와 설계 기준`을 완료했고 `M1. Docker Compose 인프라`를 시작하기
-전입니다. 애플리케이션과 인프라 코드는 아직 구현하지 않았습니다. 정확한 최신 상태는
+`M0. Repository 초기화와 설계 기준`과 `M1. Docker Compose 인프라`를 완료했고,
+`M2. Spring Boot 기본 구성`을 진행하고 있습니다. Java 21과 Spring Boot 4.1.0 기반의
+Initializr project를 생성해 context test와 Actuator health 응답까지 검증했습니다. test profile과
+공통 오류 계약은 아직 구현하지 않았습니다. 정확한 최신 상태는
 [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)를 확인합니다.
 
 ## 저장소 구조

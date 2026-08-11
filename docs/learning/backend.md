@@ -218,6 +218,7 @@ Gradle Wrapper, build script, main application class와 기본 test를 만들어
 |---|---|---|
 | Project | `Gradle - Kotlin` | 확정된 Gradle Kotlin DSL을 사용해 `build.gradle.kts`를 생성한다. |
 | Language | `Java` | Spring application source는 Java 21로 작성한다. Kotlin DSL은 build script 언어일 뿐 application 언어를 Kotlin으로 바꾸지 않는다. |
+| Spring Boot | `4.1.0` | 공식 Initializr가 제공하는 현재 기본 안정 버전을 사용한다. |
 | Group | `com.stockcast` | 생성 artifact의 group 좌표를 프로젝트 기준과 맞춘다. |
 | Artifact | `backend-spring` | 기존 component 디렉터리와 Gradle project 이름을 맞춘다. |
 | Name | `backend-spring` | 생성되는 project 표시 이름을 component 이름과 맞춘다. |
@@ -236,41 +237,37 @@ M2 project 생성 시 직접 선택할 dependency는 다음 세 개다.
 - `Spring Boot Actuator`: `/actuator/health` 같은 관리 endpoint를 제공한다. M2 완료 기준의 health API를
   별도의 사용자 기능 controller로 흉내 내지 않고 실제 application 상태 경계로 검증할 수 있다.
 
-Spring Initializr가 생성하는 `spring-boot-starter-test`는 별도의 Dependencies 검색 항목으로 추가하지
-않아도 된다. 생성된 context test와 이후 단위·통합 test의 공통 기반으로 사용한다.
+Spring Boot 4.1.0 Initializr는 선택한 기능에 맞춰 `spring-boot-starter-actuator-test`,
+`spring-boot-starter-validation-test`, `spring-boot-starter-webmvc-test`와 JUnit Platform launcher를
+생성한다. 이 test dependency는 Dependencies 검색 화면에서 별도로 추가하지 않아도 되며, 생성된
+context test와 이후 단위·통합 test의 공통 기반으로 사용한다.
 
-### 현재 Spring Boot version 충돌
+### Spring Boot 4.1.0 결정과 적용
 
-프로젝트 문서는 Java 21과 Spring Boot 3.x를 확정 기준으로 사용한다. 공식 Spring Boot 문서에서
-`3.5.16`은 Java 17부터 Java 25까지 지원하므로 Java 21과 호환된다. 다만 2026-08-11 현재 공식
+프로젝트의 이전 기준은 Java 21과 Spring Boot 3.x였다. 공식 Spring Boot 문서에서 `3.5.16`은
+Java 17부터 Java 25까지 지원하므로 Java 21과 호환된다. 다만 2026-08-11 현재 공식
 `start.spring.io` metadata에는 `4.1.0`, `4.0.7`과 각 snapshot만 표시되고 3.x는 없다. 실제
 `bootVersion=3.5.16` 생성 요청도 `Invalid Spring Boot version '3.5.16', Spring Boot compatibility
 range is >=4.0.0`이라는 400 응답으로 거부됐다.
 
-따라서 다음 두 경로를 구분해야 한다.
-
-1. 기존 Spring Boot 3.x 기준 유지: Initializr UI 대신 Spring Boot `3.5.16`과 지원 범위 안의 Gradle
-   8 Wrapper를 사용하는 project를 수동으로 구성한다.
-2. 현재 공식 Initializr 사용: project 기준을 Spring Boot `4.1.0`으로 변경한 뒤 Initializr에서
-   project를 생성한다.
-
 Spring Boot 3.x에서 4.x로 바꾸는 것은 단순한 patch version 선택이 아니라 major version 변경이다.
-major version 변경은 호환되지 않는 API나 기본 동작이 바뀔 수 있는 큰 version 변경을 뜻한다. 따라서
-Initializr 화면에 4.x만 보인다는 이유로 사용자의 결정 없이 project 기준을 바꾸지 않는다.
+major version 변경은 호환되지 않는 API나 기본 동작이 바뀔 수 있는 큰 version 변경을 뜻한다.
+사용자는 아직 Spring source가 없어 migration 비용이 없는 현재 시점에 공식 Initializr와 현재 지원
+흐름을 사용하기 위해 Spring Boot 4.1.0으로 기준을 변경했다. 결정 근거와 영향은 ADR-0003에 기록했다.
 
 공식 근거:
 
 - [Spring Initializr Reference Guide](https://docs.spring.io/initializr/docs/current/reference/html/)
+- [Spring Boot 4.1.0 System Requirements](https://docs.spring.io/spring-boot/system-requirements.html)
 - [Spring Boot 3.5.16 System Requirements](https://docs.spring.io/spring-boot/3.5/system-requirements.html)
 - [Spring Boot 3.5.16 release](https://spring.io/blog/2026/06/25/spring-boot-3-5-16-available-now/)
 - [Spring Boot Actuator 시작 가이드](https://spring.io/guides/gs/actuator-service/)
 
 ### 프로젝트에서의 연결
 
-이번 project 생성은 `backend-spring/`에 Gradle Wrapper, `build.gradle.kts`, Java main source와 context
-test를 만드는 데까지만 해당한다. profile, 공통 오류 계약, health 공개 범위와 실제 실행 검증은 생성된
-파일을 먼저 확인한 뒤 별도의 작은 TODO로 진행한다. `backend-spring/README.md`는 component 책임을
-설명하는 기존 문서이므로 project 파일을 배치할 때 보존한다.
+이번 project 생성으로 `backend-spring/`에 Gradle Wrapper, `build.gradle.kts`, Java main source와
+context test를 만들었다. 기존 `backend-spring/README.md`는 component 책임 문서로 보존했다. profile과
+공통 오류 계약은 생성 결과와 기본 실행을 먼저 검증한 뒤 별도의 작은 TODO로 진행한다.
 
 ### 지금 제외하는 dependency와 이유
 
@@ -318,6 +315,21 @@ project를 생성한 뒤에는 아직 application runtime이 정상이라고 판
 그다음 생성된 build file과 Wrapper version을 검토하고 `gradlew.bat test`를 실행해야 dependency download,
 compile과 context test까지 검증할 수 있다. 파일이 존재한다는 사실만으로 build와 runtime이 통과했다고
 말하지 않는다.
+
+### 실제 생성 및 검증 결과
+
+2026-08-11에 공식 Initializr ZIP을 임시 위치에서 먼저 검사하고 기존 `README.md`와 충돌하지 않는 것을
+확인한 뒤 생성 파일을 `backend-spring/`에 배치했다. Initializr가 Git 추적에서 제외하는 `HELP.md`는
+저장소에 넣지 않았다.
+
+생성된 `build.gradle.kts`에서 Spring Boot plugin 4.1.0, Java toolchain 21, `com.stockcast` group과
+Actuator·Validation·Web MVC starter를 확인했다. Gradle Wrapper는 9.5.1이다.
+
+`backend-spring/`에서 `.\gradlew.bat test --no-daemon`을 실행한 결과 compile, test compile과
+`contextLoads()`가 모두 성공했고 build는 종료 코드 `0`으로 끝났다. 이어서 `bootRun`으로 Java
+21.0.12와 Spring Boot 4.1.0 실행을 확인했으며 `http://127.0.0.1:8080/actuator/health`는 HTTP 200과
+`{"groups":["liveness","readiness"],"status":"UP"}`를 반환했다. 검증 뒤 application process와
+8080 listener가 종료된 것도 확인했다.
 
 ### 면접 질문과 답변 keyword
 

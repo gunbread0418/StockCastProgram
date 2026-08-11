@@ -48,7 +48,7 @@
 ## M2. Spring Boot 기본 구성
 
 - 핵심 학습: DI, auto-configuration, profile, externalized configuration
-- 기본: Java 21, Spring Boot 3.x, health, 공통 오류와 test profile
+- 기본: Java 21, Spring Boot 4.1.0, health, 공통 오류와 test profile
 - 완료 기준: context test와 health API 성공
 - 검증: 정상 실행, invalid request 오류 계약
 

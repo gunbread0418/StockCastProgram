@@ -40,7 +40,7 @@ PostgreSQL, MongoDB, Redis에 저장한 뒤 독립된 FastAPI ML 서비스로 �
 
 ### 백엔드 학습 목표
 
-- Java 21과 Spring Boot 3.x 기반 REST API
+- Java 21과 Spring Boot 4.1.0 기반 REST API
 - Validation, 예외 계약, JPA transaction과 외부 연동
 - Kafka consumer와 DB side effect 사이의 처리 경계
 - Redis cache와 PostgreSQL fallback
@@ -95,7 +95,7 @@ PostgreSQL, MongoDB, Redis에 저장한 뒤 독립된 FastAPI ML 서비스로 �
 ### Backend
 
 - Java 21
-- Spring Boot 3.x
+- Spring Boot 4.1.0
 - Spring Web
 - Spring Data JPA
 - Spring Kafka
@@ -130,12 +130,15 @@ PostgreSQL, MongoDB, Redis에 저장한 뒤 독립된 FastAPI ML 서비스로 �
 
 ## 확정 기술 기준
 
-다음 항목은 2026-07-20에 사용자가 확정한 초기 기준이다.
+다음 항목은 사용자가 확정한 현재 기준이다. 초기 기준은 2026-07-20에 정했고,
+Spring Boot와 Gradle Wrapper 기준은 공식 Initializr 적용 결과에 따라 2026-08-11에 갱신했다.
 
 | 항목 | 값 | 상태 |
 |---|---|---|
 | Java package | `com.stockcast` | 확정 |
 | Build tool | Gradle Kotlin DSL | 확정 |
+| Spring Boot | `4.1.0` | 확정 |
+| Gradle Wrapper | `9.5.1` | Initializr 생성 기준 |
 | 초기 exchange | `FAKE` | 확정 |
 | 초기 종목 수 | 3 | 확정 |
 | tick 간격 | 1초 | 확정 |

@@ -13,8 +13,8 @@
 M0의 프로젝트 목적, 작업 규칙, 상태·로드맵·아키텍처·ADR 문서, `.gitignore`,
 `.env.example`과 최상위 디렉터리 정책을 작성하고 검증했다. `backend-spring/`,
 `prediction-service/`, `infra/`, `scripts/`, `docs/`는 각 README로 책임과 제외 범위를
-문서화해 Git에서 추적한다. 애플리케이션 source는 아직 없으며 인프라는 PostgreSQL Compose
-service부터 구현을 시작했다.
+문서화해 Git에서 추적한다. 인프라는 M1에서 전체 구성을 완료했고 Spring application source는
+M2에서 공식 Initializr project로 생성을 시작했다.
 
 M1의 Docker 실행 환경 사전검증에 이어 PostgreSQL, Redis, MongoDB, Kafka와 Kafka UI의 Compose
 구성과 단일 service 검증을 완료했다.
@@ -52,8 +52,15 @@ PowerShell은 이전 환경 변수를 유지해 계속 version 17을 출력했�
 첫 `java`와 `javac`가 Temurin 경로를 가리키고 각각 `openjdk version "21.0.12"`, `javac 21.0.12`,
 종료 코드 `0`을 출력했다. 컴퓨터 재시작은 필요하지 않으며 기존 terminal application을 다시 열면 된다.
 OCI compute와 Oracle JDK는 별도 선택이므로 나중에 OCI에 배포하더라도 Java 21과 호환되는 Temurin,
-OpenJDK 또는 Oracle JDK runtime을 선택할 수 있다. Spring Boot source와 Gradle Wrapper는 아직
-생성하지 않았다.
+OpenJDK 또는 Oracle JDK runtime을 선택할 수 있다.
+
+기존 Spring Boot 3.x 기준은 현재 공식 Initializr가 4.0.0 이상만 생성하고 3.5.16이 마지막 3.5.x OSS
+release라는 점을 확인한 뒤 사용자의 결정으로 Spring Boot 4.1.0으로 변경했다. 공식 Initializr에서
+Gradle Kotlin DSL, Java 21, `com.stockcast`, executable JAR, Properties와 Spring Web·Validation·Actuator를
+선택해 `backend-spring/` 기본 project를 생성했다. 생성 결과에는 Spring Boot 4.1.0 plugin, Gradle
+Wrapper 9.5.1, Java main source와 context test가 포함됐다. `.\gradlew.bat test --no-daemon`은 종료 코드
+`0`으로 성공했고, 실제 `bootRun`에서 Java 21.0.12와 Spring Boot 4.1.0을 확인했다.
+`/actuator/health`는 HTTP 200과 `UP`을 반환했으며 검증 후 process와 8080 listener를 종료했다.
 
 구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
 중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
@@ -89,10 +96,14 @@ network 경계를 문서화했다.
 - 전체 service 실행 중 PostgreSQL·Redis·MongoDB 인증 접속, Kafka host listener와 Kafka UI cluster 조회 검증
 - M2 Java 21 JDK 사전검증 기준과 실패 조건 문서화
 - Eclipse Temurin 21 JDK 설치, system `JAVA_HOME`·`PATH`와 `java`·`javac` version 21 검증
+- Spring Boot 기준을 3.x에서 4.1.0으로 변경하고 ADR-0003에 근거 기록
+- 공식 Initializr의 Gradle Kotlin DSL·Java 21 기본 project와 Gradle Wrapper 9.5.1 생성
+- Spring Boot 4.1.0 기본 context test와 Gradle build 성공 검증
+- Java 21.0.12 runtime, embedded Tomcat과 Actuator health HTTP 200·`UP` 검증
 
 ## 아직 구현되지 않은 항목
 
-- Spring Boot source와 Gradle Wrapper·build
+- M2 test profile과 공통 오류·invalid request 계약
 - FastAPI source와 Python package
 - DB schema와 migration
 - Kafka application topic과 producer/consumer
@@ -102,6 +113,8 @@ network 경계를 문서화했다.
 ## 확정된 초기 기준
 
 - Build tool: Gradle Kotlin DSL
+- Spring Boot: `4.1.0`
+- Gradle Wrapper: `9.5.1`
 - Java base package: `com.stockcast`
 - 초기 market data: `FAKE` exchange, 종목 3개, 1초 tick
 - 첫 ML target: 다음 5분 방향 분류
@@ -117,7 +130,7 @@ network 경계를 문서화했다.
 - Git 작성자 이메일의 GitHub 계정 연결을 사용자가 확인했다.
 - `infra/compose.yaml`에는 PostgreSQL, Redis, MongoDB, Kafka와 Kafka UI service가 구현되어 있다.
 - M1의 다섯 service 동시 기동과 핵심 접속 경로 검증이 완료됐다.
-- Spring Boot와 FastAPI 애플리케이션 source는 아직 없다.
+- Spring Boot 기본 source와 Gradle build는 생성됐고 FastAPI 애플리케이션 source는 아직 없다.
 - 최상위 component 디렉터리는 빈 디렉터리용 `.gitkeep`이 아니라 책임 README로 추적한다.
 
 ## 최상위 디렉터리 정책
@@ -157,6 +170,12 @@ network 경계를 문서화했다.
 - `docs/learning/infrastructure.md`: 전체 Compose 동시 기동과 읽기 전용 핵심 접속 검증 결과
 - `docs/TROUBLESHOOTING.md`: `Invoke-RestMethod`의 JSON 배열을 펼치지 않아 빈 표가 나온 `ERR-005`
 - `docs/ROADMAP.md`: M1 상태를 `DONE`으로 전환
+- `backend-spring/build.gradle.kts`: Spring Boot 4.1.0, Java 21과 M2 최소 dependency 설정
+- `backend-spring/gradle/wrapper/`: 재현 가능한 Gradle 9.5.1 Wrapper
+- `backend-spring/src/`: 기본 application class, Properties 설정 파일과 context test
+- `docs/adr/0003-spring-boot-4-baseline.md`: 3.x에서 4.1.0으로 변경한 선택 근거와 영향
+- `docs/PROJECT_CONTEXT.md`: Java 21·Spring Boot 4.1.0 백엔드 기준으로 갱신
+- `docs/ROADMAP.md`: M2 기본 version을 Spring Boot 4.1.0으로 갱신
 
 ## 추후 `.gitignore` 점검 시점
 
@@ -237,6 +256,9 @@ network 경계를 문서화했다.
 | 2026-08-11 | Temurin 21 package 재조회 | ID `EclipseAdoptium.Temurin.21.JDK`, version `21.0.12.8`, publisher, Windows x64 WiX MSI, 종료 코드 `0` 확인 |
 | 2026-08-11 | Temurin 21 설치와 system 환경 | 설치 디렉터리 확인, system `JAVA_HOME`과 `PATH`에서 Temurin 21 우선 설정 확인 |
 | 2026-08-11 | Java 21 실행 환경 | 새 system 환경을 읽은 process에서 Temurin `java 21.0.12`, `javac 21.0.12`, 두 종료 코드 `0` 확인 |
+| 2026-08-11 | Spring Initializr 4.1.0 project 생성 | Gradle Kotlin DSL, Java 21, `com.stockcast`, Web MVC·Validation·Actuator와 Gradle Wrapper 9.5.1 확인 |
+| 2026-08-11 | Spring Boot 기본 context test | `.\gradlew.bat test --no-daemon` 종료 코드 `0`, compile과 `contextLoads()` 성공 |
+| 2026-08-11 | Spring Boot 기본 runtime과 health | Java 21.0.12, Spring Boot 4.1.0, Tomcat 8080 실행; `/actuator/health` HTTP 200·`UP`, 종료 후 listener 0개 확인 |
 
 ## 알려진 실패와 blocker
 
@@ -245,6 +267,8 @@ network 경계를 문서화했다.
   `ERR-006`을 `RESOLVED`로 기록함
 - 최초 Temurin package 조회의 source 갱신 실패는 수동 갱신과 정확한 package 재조회로 해결했으며
   `ERR-007`을 `RESOLVED`로 기록함
+- 기존 Spring Boot 3.x 기준과 현재 Initializr의 4.0.0 이상 생성 범위 충돌은 사용자의 Spring Boot
+  4.1.0 기준 변경으로 해결했으며 ADR-0003에 기록함
 - 일반 `git status`는 샌드박스 사용자와 저장소 소유권 차이로 `dubious ownership` 오류 발생
 - 전역 Git 설정 대신 명령별 `safe.directory` 옵션으로 Git 명령을 실행함
 - 저장소 밖에서 실행한 `git check-ignore`와 파일명 오기입으로 인한 `.env.example` 검증 실패는
@@ -261,9 +285,10 @@ network 경계를 문서화했다.
 
 ## 다음 작업
 
-Java 21 환경에서 Spring Initializr의 Gradle Kotlin DSL, Spring Boot 3.x, package와 M2 dependency
-구성을 확정한 뒤 `backend-spring/`에 기본 project를 생성한다.
+생성된 Spring Boot 4.1.0 project의 build 구조와 auto-configuration 경계를 확인한 뒤 M2 test profile을
+추가한다. auto-configuration은 classpath와 설정을 기준으로 Spring이 필요한 구성을 자동으로 등록하는
+기능이다.
 
 ## 다음 채팅 시작 문장
 
-`StockCastProgram M2의 Java 21 JDK 사전검증을 완료했어. Spring Initializr 설정과 dependency를 설명하고 기본 project 생성을 안내해줘.`
+`StockCastProgram M2의 Spring Boot 4.1.0 기본 project 생성과 context·health 검증을 완료했어. 생성된 build 구조를 설명하고 test profile 추가를 한 단계씩 안내해줘.`
