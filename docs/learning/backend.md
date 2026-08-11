@@ -126,8 +126,14 @@ Eclipse Temurin 21 JDK를 함께 설치하는 방식을 추천한다. 프로젝�
 `원본을 업데이트하지 못했습니다. winget`과 `입력 조건과 일치하는 패키지를 찾을 수 없습니다.`가
 차례로 출력됐고 종료 코드는 `-1978335212`였다. Microsoft의 공식 return code 표에서 이 값은 package를
 찾지 못했다는 뜻이다. 다만 그 전에 package 정보를 제공하는 source 업데이트가 실패했으므로, 이 결과만
-보고 Package ID가 틀렸거나 Temurin 21이 없다고 확정하지 않는다. 다음에는 `winget source list`로 현재
-등록된 source의 이름과 주소를 먼저 확인한다.
+보고 Package ID가 틀렸거나 Temurin 21이 없다고 확정하지 않는다.
+
+후속 `winget source list`에서는 기본 source 세 개가 모두 조회됐다. `winget`은
+`https://cdn.winget.microsoft.com/cache`, `msstore`는 Microsoft Store 주소, `winget-font`는
+font repository 주소를 가리켰고 각 source의 명시적 설정도 기본값과 일치했다. 따라서 source가
+누락됐거나 `winget` 주소가 잘못 등록된 문제는 아니다. 사용자가 전달한 출력에는 종료 코드 문자열이
+포함되지 않아 `source list`의 종료 코드는 별도로 확정하지 않는다. 다음에는
+`winget source update --name winget`으로 등록 정보가 아닌 실제 source 갱신 경로를 확인한다.
 
 Package ID를 정확히 지정하고 `--exact`를 사용하면 비슷한 이름의 JRE나 다른 Java version을 선택하는
 실수를 막을 수 있다. JRE는 실행 환경만 제공하는 package이므로 source와 test를 컴파일해야 하는 현재
