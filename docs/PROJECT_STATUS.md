@@ -50,7 +50,9 @@ PowerShell에서 JDK 17의 실행기와 컴파일러가 정상 동작한다는 �
 Java 21은 검증되지 않았다. Spring Boot source와 Gradle Wrapper는 아직 생성하지 않았으며,
 추가 진단에서 `PATH`가 가장 먼저 찾는 실행 파일과 `JAVA_HOME`이 모두
 `C:\Program Files\Java\jdk-17`을 가리키는 것을 확인했다. 환경 변수끼리 충돌하는 상태는 아니며,
-Java 21이 다른 경로에 설치됐는지는 아직 확인되지 않았다.
+`C:\Program Files\Java`의 하위 디렉터리도 `jdk-17` 하나뿐이었다. 기존 Oracle JDK 17은 보존하고
+Eclipse Temurin 21 JDK를 추가하는 방안을 우선 검토하며, 설치 전에 Windows Package Manager에서
+정확한 JDK package 정보를 확인한다.
 
 구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
 중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
@@ -226,12 +228,13 @@ network 경계를 문서화했다.
 | 2026-08-10 | M1 `.gitignore` 최종 점검 | Compose service에 repository 내부 bind mount가 없고 named volume·tmpfs만 사용하므로 추가 ignore 규칙이 필요하지 않음 |
 | 2026-08-11 | Java 21 JDK 사전검증 | `java`와 `javac`는 종료 코드 `0`이지만 모두 version 17로 확인되어 Java 21 기준 미통과 |
 | 2026-08-11 | JDK 실행 경로 진단 | `PATH`의 첫 `java`·`javac`와 `JAVA_HOME`이 모두 `C:\Program Files\Java\jdk-17`을 가리킴 |
+| 2026-08-11 | Oracle JDK 설치 디렉터리 조회 | `C:\Program Files\Java` 조회 성공, 하위 디렉터리는 `jdk-17` 하나로 Java 21 없음 |
 
 ## 알려진 실패와 blocker
 
 - M1 기능 blocker는 없음
 - M2의 Java 21 JDK 사전검증은 `PATH`와 `JAVA_HOME`이 모두 version 17을 선택해 미통과 상태이며
-  Java 21의 다른 경로 설치 여부는 미확인 상태로 `ERR-006`에 `OPEN`으로 기록함
+  Oracle JDK 표준 설치 위치에도 Java 21이 없어 `ERR-006`에 `OPEN`으로 기록함
 - 일반 `git status`는 샌드박스 사용자와 저장소 소유권 차이로 `dubious ownership` 오류 발생
 - 전역 Git 설정 대신 명령별 `safe.directory` 옵션으로 Git 명령을 실행함
 - 저장소 밖에서 실행한 `git check-ignore`와 파일명 오기입으로 인한 `.env.example` 검증 실패는
@@ -248,10 +251,9 @@ network 경계를 문서화했다.
 
 ## 다음 작업
 
-PowerShell에서 `C:\Program Files\Java`의 하위 디렉터리를 조회해 Oracle JDK 21이 이미 설치돼
-있는지 확인한다. JDK 17만 있으면 Java 21 설치 단계로 이동하고, JDK 21 디렉터리가 있으면 설치를
-반복하지 않고 해당 경로의 실행 파일을 직접 검증한다.
+PowerShell에서 `winget` version과 `EclipseAdoptium.Temurin.21.JDK` package 정보를 확인한다.
+정확한 JDK 21 package가 조회되면 기존 Oracle JDK 17을 보존한 채 Temurin 21 설치로 이동한다.
 
 ## 다음 채팅 시작 문장
 
-`PATH와 JAVA_HOME이 모두 C:\Program Files\Java\jdk-17을 가리켜. C:\Program Files\Java에 Java 21이 설치돼 있는지 확인하는 다음 TODO를 안내해줘.`
+`C:\Program Files\Java에는 jdk-17만 있어. winget에서 Eclipse Temurin 21 JDK package를 확인하는 다음 TODO를 안내해줘.`

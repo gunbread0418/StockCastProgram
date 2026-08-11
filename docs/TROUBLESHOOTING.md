@@ -131,15 +131,17 @@
   프로젝트 기준인 major version `21`과 일치하지 않았다.
 - 원인: 현재 PowerShell은 `C:\Program Files\Java\jdk-17\bin`의 `java.exe`와 `javac.exe`를 가장
   먼저 찾고, `JAVA_HOME`도 `C:\Program Files\Java\jdk-17`을 가리킨다. 즉 `PATH`와 `JAVA_HOME`의
-  충돌이 아니라 두 설정이 모두 과거에 설치한 Oracle JDK 17을 선택하는 상태다. Java 21이 다른
-  경로에 설치됐는지는 아직 확인되지 않았다.
+  충돌이 아니라 두 설정이 모두 과거에 설치한 Oracle JDK 17을 선택하는 상태다.
+  `C:\Program Files\Java`의 디렉터리 조회 결과도 `jdk-17` 하나뿐이어서 Oracle JDK의 표준 설치
+  위치에는 Java 21이 없다.
 - 해결 과정: Spring Boot project 생성과 환경 변수 변경은 시작하지 않았다. `where.exe java`와
   `where.exe javac`에서 JDK 17의 직접 경로가 첫 번째이고 Oracle의 공통 `javapath`가 두 번째인
-  것을 확인했다. 다음에는 `C:\Program Files\Java`의 하위 디렉터리를 조회해 Oracle JDK 21의 설치
-  여부를 확인한다.
+  것을 확인했다. `C:\Program Files\Java` 조회도 성공했으며 `jdk-17`만 확인됐다. 기존 JDK 17은
+  삭제하지 않고 Eclipse Temurin 21 JDK를 추가하는 방안을 추천하며, 설치 전 `winget show`로
+  정확한 package ID와 installer 정보를 확인한다.
 - 검증 결과: JDK 17 실행 파일 경로와 `JAVA_HOME`이 서로 일치한다. `where.exe`는 `PATH`에 포함된
-  경로만 검색하므로 Java 21의 미설치 여부는 아직 확정하지 않았고, Java 21 JDK 실행 환경도
-  검증되지 않아 이 항목을 `OPEN`으로 유지한다.
+  경로만 검색하지만 Oracle의 실제 설치 디렉터리도 함께 조회해 해당 위치에 Java 21이 없음을
+  확인했다. Java 21 JDK를 아직 설치하거나 실행하지 않았으므로 이 항목은 `OPEN`으로 유지한다.
 - 재발 방지: JDK를 설치하거나 환경 변수를 바꾼 뒤에는 새 PowerShell을 열어 `java`와 `javac`의
   실제 major version과 종료 코드를 다시 확인한다. Gradle Wrapper 생성과 build는 두 명령이 모두
   프로젝트 기준 version을 가리킨 뒤 시작한다.

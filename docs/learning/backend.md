@@ -115,6 +115,23 @@ PowerShell에서 정상적으로 선택된다는 사실을 확인한다. 그러�
 경로에도 없다고 확정할 수는 없다. 다음 확인은 Oracle JDK가 설치된
 `C:\Program Files\Java`의 하위 디렉터리를 조회해 Java 21 설치 여부를 확인하는 것이다.
 
+해당 디렉터리 조회는 성공했고 하위 디렉터리는 `jdk-17` 하나뿐이었다. 따라서 Oracle JDK의 표준
+설치 위치에는 Java 21이 없다. M2에서는 기존 Oracle JDK 17을 삭제하지 않고 OpenJDK 기반 배포판인
+Eclipse Temurin 21 JDK를 함께 설치하는 방식을 추천한다. 프로젝트는 Oracle 전용 기능을 사용하지
+않으며, Temurin은 Windows Package Manager의 major version별 package로 설치할 수 있어 개발 환경을
+다시 구성할 때 같은 선택을 설명하기 쉽다.
+
+설치 전에 `winget show`로 `EclipseAdoptium.Temurin.21.JDK` package의 publisher, version과 installer
+정보를 확인한다. Package ID를 정확히 지정하고 `--exact`를 사용하면 비슷한 이름의 JRE나 다른 Java
+version을 선택하는 실수를 막을 수 있다. JRE는 실행 환경만 제공하는 package이므로 source와 test를
+컴파일해야 하는 현재 프로젝트에는 JDK package가 필요하다.
+
+공식 근거:
+
+- [Eclipse Temurin 설치 안내](https://adoptium.net/installation/)
+- [Eclipse Temurin Windows MSI 안내](https://adoptium.net/installation/windows/)
+- [Microsoft WinGet install 명령](https://learn.microsoft.com/windows/package-manager/winget/install)
+
 ### 면접 질문과 답변 keyword
 
 질문: Spring Boot 개발 환경을 준비할 때 `java -version`과 `javac -version`을 왜 모두
