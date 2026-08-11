@@ -137,13 +137,28 @@ font repository 주소를 가리켰고 각 source의 명시적 설정도 기본�
 
 실제 source 갱신에서는 진행률이 `100%`에 도달하고 `완료`가 출력됐으며 종료 코드도 `0`이었다.
 따라서 현재 `winget` source는 network를 통해 package index를 정상적으로 갱신할 수 있다. 처음
-`winget show`에서 발생한 source 업데이트 실패가 계속 재현되는 상태는 아니지만, package 조회 자체는
-아직 다시 실행하지 않았으므로 Temurin 21 package가 조회된다고 확정하지 않는다. 같은 정확한 Package
-ID로 `winget show`를 다시 실행해 source 갱신과 package 검색을 분리해서 검증한다.
+`winget show`에서 발생한 source 업데이트 실패가 계속 재현되는 상태는 아니었다. 같은 정확한 Package
+ID로 다시 조회하자 Eclipse Adoptium의 Temurin JDK `21.0.12.8`, Windows x64용 WiX MSI와 종료 코드
+`0`을 확인했다. 따라서 source 갱신과 Package ID 검증은 통과했다.
 
 Package ID를 정확히 지정하고 `--exact`를 사용하면 비슷한 이름의 JRE나 다른 Java version을 선택하는
 실수를 막을 수 있다. JRE는 실행 환경만 제공하는 package이므로 source와 test를 컴파일해야 하는 현재
 프로젝트에는 JDK package가 필요하다.
+
+Temurin은 `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.8-hotspot`에 설치됐다. Windows의 system
+`JAVA_HOME`은 이 디렉터리를 가리키고 system `PATH`에서도 Temurin의 `bin`이 기존 Oracle JDK 17보다
+앞에 배치됐다. 기존 Oracle JDK 17은 삭제하지 않았다.
+
+설치 직후에도 이미 열려 있던 PowerShell에서는 `java`와 `javac`가 계속 version 17을 출력했다.
+Windows process는 시작할 때 부모 process의 환경 변수를 복사하므로, 실행 중인 shell은 installer가
+바꾼 system 환경 변수를 자동으로 다시 읽지 않기 때문이다. 컴퓨터를 재시작할 필요는 없고 terminal
+application을 완전히 종료한 뒤 다시 열거나 현재 shell의 `JAVA_HOME`과 `PATH`를 system 값으로
+새로 읽으면 된다.
+
+system 환경 변수를 다시 읽은 process에서는 `where.exe`의 첫 `java`와 `javac`가 Temurin 21의
+실행 파일을 가리켰다. `java`는 `openjdk version "21.0.12"`, `javac`는 `javac 21.0.12`를 출력했고
+두 종료 코드가 모두 `0`이었다. 이 결과로 Java 21 JDK 실행 환경 사전검증은 완료했다. 아직 Gradle
+Wrapper, Spring Boot build와 애플리케이션 runtime을 검증한 것은 아니다.
 
 ### OCI 배포와 JDK 배포판의 관계
 

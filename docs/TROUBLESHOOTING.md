@@ -26,8 +26,8 @@
 | ERR-003 | 2026-07-24 | M0 | RESOLVED | `new blank line at EOF` | README 끝에 개행이 두 개 있었음 |
 | ERR-004 | 2026-08-07 | M1 | RESOLVED | `psql`의 `CREATE` 구문이 끝에서 잘림 | 중첩된 셸에서 SQL 인자 경계가 사라짐 |
 | ERR-005 | 2026-08-10 | M1 | RESOLVED | Kafka UI cluster 값이 빈 표로 보임 | JSON 배열을 pipeline에서 펼치지 않음 |
-| ERR-006 | 2026-08-11 | M2 | OPEN | Java 21 사전검증에서 version 17 확인 | 현재 PowerShell이 JDK 17을 선택함 |
-| ERR-007 | 2026-08-11 | M2 | OPEN | `winget show`에서 source 업데이트와 package 조회 실패 | 수동 source 갱신 성공, 최초 실패 원인은 미확정 |
+| ERR-006 | 2026-08-11 | M2 | RESOLVED | Java 21 설치 후에도 열린 PowerShell에서 version 17 확인 | 실행 중인 process가 설치 전 환경 변수를 유지함 |
+| ERR-007 | 2026-08-11 | M2 | RESOLVED | `winget show`에서 source 업데이트와 package 조회 실패 | source 수동 갱신 후 정확한 package 조회 성공 |
 
 ## ERR-001: 저장소를 찾지 못한 `git check-ignore`
 
@@ -125,8 +125,8 @@
 
 - 날짜: 2026-08-11
 - 마일스톤: M2. Spring Boot 기본 구성
-- 상태: `OPEN`
-- 실행 맥락: 새 PowerShell의 `C:\WINDOWS\system32`에서 Spring Boot project와 Gradle Wrapper를
+- 상태: `RESOLVED`
+- 실행 맥락: PowerShell의 `C:\WINDOWS\system32`에서 Spring Boot project와 Gradle Wrapper를
   만들기 전에 `java -version`과 `javac -version`을 실행했다.
 - 증상: `java version "17"`과 `javac 17`이 출력됐다. 두 명령의 종료 코드는 모두 `0`이었지만
   프로젝트 기준인 major version `21`과 일치하지 않았다.
@@ -134,44 +134,49 @@
   먼저 찾고, `JAVA_HOME`도 `C:\Program Files\Java\jdk-17`을 가리킨다. 즉 `PATH`와 `JAVA_HOME`의
   충돌이 아니라 두 설정이 모두 과거에 설치한 Oracle JDK 17을 선택하는 상태다.
   `C:\Program Files\Java`의 디렉터리 조회 결과도 `jdk-17` 하나뿐이어서 Oracle JDK의 표준 설치
-  위치에는 Java 21이 없다.
-- 해결 과정: Spring Boot project 생성과 환경 변수 변경은 시작하지 않았다. `where.exe java`와
+  위치에는 Java 21이 없었다. Temurin 21 설치 후에도 이미 열려 있던 PowerShell은 process 시작 때
+  복사한 기존 `JAVA_HOME`과 `PATH`를 유지했기 때문에 계속 JDK 17을 선택했다.
+- 해결 과정: Spring Boot project 생성은 시작하지 않았다. `where.exe java`와
   `where.exe javac`에서 JDK 17의 직접 경로가 첫 번째이고 Oracle의 공통 `javapath`가 두 번째인
   것을 확인했다. `C:\Program Files\Java` 조회도 성공했으며 `jdk-17`만 확인됐다. 기존 JDK 17은
-  삭제하지 않고 Eclipse Temurin 21 JDK를 추가하는 방안을 추천하며, 설치 전 `winget show`로
-  정확한 package ID와 installer 정보를 확인한다.
-- 검증 결과: JDK 17 실행 파일 경로와 `JAVA_HOME`이 서로 일치한다. `where.exe`는 `PATH`에 포함된
-  경로만 검색하지만 Oracle의 실제 설치 디렉터리도 함께 조회해 해당 위치에 Java 21이 없음을
-  확인했다. Java 21 JDK를 아직 설치하거나 실행하지 않았으므로 이 항목은 `OPEN`으로 유지한다.
-- 재발 방지: JDK를 설치하거나 환경 변수를 바꾼 뒤에는 새 PowerShell을 열어 `java`와 `javac`의
-  실제 major version과 종료 코드를 다시 확인한다. Gradle Wrapper 생성과 build는 두 명령이 모두
-  프로젝트 기준 version을 가리킨 뒤 시작한다.
+  삭제하지 않고 Eclipse Temurin 21 JDK를 함께 설치했다. installer에서 system `JAVA_HOME`과 `PATH`를
+  갱신했으며, 실행 중인 shell에는 system 환경 변수를 다시 읽어 적용했다.
+- 검증 결과: Temurin 설치 디렉터리는
+  `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.8-hotspot`이다. system `JAVA_HOME`은 이 경로를
+  가리키고 system `PATH`에서 Temurin의 `bin`이 Oracle JDK 17보다 앞에 있다. 환경 변수를 다시 읽은
+  process에서 첫 `java`와 `javac`가 Temurin 경로로 확인됐고 각각 `openjdk version "21.0.12"`,
+  `javac 21.0.12`, 종료 코드 `0`을 출력했다.
+- 재발 방지: JDK installer가 system 환경 변수를 변경해도 실행 중인 terminal process는 이전 값을
+  유지한다. 컴퓨터를 재시작하기 전에 terminal application을 완전히 종료하고 다시 열어 `java`,
+  `javac`, `where.exe`와 `JAVA_HOME`을 함께 확인한다.
 
 ## ERR-007: WinGet source 업데이트와 Temurin package 조회 실패
 
 - 날짜: 2026-08-11
 - 마일스톤: M2. Spring Boot 기본 구성
-- 상태: `OPEN`
+- 상태: `RESOLVED`
 - 실행 맥락: Temurin 21 JDK를 설치하기 전에 package 정보를 확인하려고 새 PowerShell에서
   `winget show --id EclipseAdoptium.Temurin.21.JDK --exact --source winget`을 실행했다.
 - 증상: `winget --version`은 `v1.29.280`, 종료 코드 `0`으로 정상 실행됐다. 이어진 package 조회에서는
   `원본을 업데이트하지 못했습니다. winget` 다음에 `입력 조건과 일치하는 패키지를 찾을 수 없습니다.`가
   출력됐고 종료 코드는 `-1978335212`였다.
-- 원인: 아직 확정되지 않았다. Microsoft의 공식 return code 표에서 `-1978335212`는 조회 조건에 맞는
+- 원인: Microsoft의 공식 return code 표에서 `-1978335212`는 조회 조건에 맞는
   package가 없다는 뜻이다. 그러나 같은 실행에서 `winget` source 업데이트가 먼저 실패했다.
   `winget source list`에서 기본 source 세 개가 모두
   조회됐고 `winget`도 정상 주소인 `https://cdn.winget.microsoft.com/cache`를 가리켰으므로 source가
   누락됐거나 주소가 잘못 등록된 가설은 제외한다. 이어서 수동 source 갱신도 성공했으므로 지속적인
-  network 접근 장애도 현재는 재현되지 않는다. 최초 실패가 일시적인 접근 문제였는지 local cache
-  상태였는지는 아직 확정하지 않았고, 현재 증거만으로 Package ID 오류라고도 단정하지 않는다.
-- 해결 과정: source를 초기화하거나 JDK를 수동 설치하지 않았다. 읽기 전용인 `winget source list`로
+  network 접근 장애도 현재는 재현되지 않았다. 직접적인 실패 원인은 첫 조회에서 source 갱신이
+  완료되지 않아 package index를 정상적으로 검색하지 못한 것이다. 최초 갱신이 실패한 하위 원인이
+  일시적인 network 접근이었는지 local cache 상태였는지는 확인되지 않았다.
+- 해결 과정: source를 초기화하지 않았다. 읽기 전용인 `winget source list`로
   기본 source 등록이 정상임을 확인했다. `winget source update --name winget`을 실행하자 진행률이
   `100%`에 도달하고 `완료`가 출력됐으며 종료 코드 `0`으로 끝났다. source reset은 실행하지 않았다.
-  다음에는 처음 실패한 정확한 `winget show` 명령을 다시 실행한다.
+  이후 처음 실패한 정확한 `winget show` 명령을 다시 실행했다.
 - 검증 결과: `msstore`, `winget`, `winget-font`의 이름과 주소, 명시적 설정이 기본값과 일치했다.
   전달된 출력에는 종료 코드 문자열이 포함되지 않아 `source list`의 종료 코드는 별도로 확정하지 않았다.
-  `winget` source의 수동 갱신은 종료 코드 `0`으로 확인했다. Package 정보 조회와 Temurin 21 JDK 설치는
-  아직 성공하지 않았으므로 `ERR-006`과 이 항목을 모두 `OPEN`으로 유지한다.
+  `winget` source의 수동 갱신은 종료 코드 `0`으로 확인했다. Package 재조회에서는
+  `EclipseAdoptium.Temurin.21.JDK`, version `21.0.12.8`, publisher `Eclipse Adoptium`, Windows x64용
+  WiX MSI와 종료 코드 `0`을 확인했고 해당 package 설치까지 완료했다.
 - 재발 방지: package를 찾지 못했다는 출력 앞에 source 관련 오류가 있으면 Package ID부터 바꾸지 않는다.
   `winget source list`와 source update 결과를 먼저 확인하고 필요하면 verbose log로 원인을 좁힌다.
 

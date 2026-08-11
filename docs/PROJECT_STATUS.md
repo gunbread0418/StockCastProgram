@@ -44,21 +44,16 @@ MongoDB와 Kafka는 약 17.2초, Kafka UI는 Kafka의 `healthy` 전환 뒤 약 2
 `stockcast-local ONLINE`을 확인했다. 이 결과로 M1의 전체 Compose 재현과 핵심 접속 경로 검증을
 완료했다.
 
-M2의 첫 TODO로 Java 21 JDK 실행 환경 사전검증을 시작했다. `java -version`과 `javac -version`은
-모두 종료 코드 `0`으로 실행됐지만 각각 `java version "17"`과 `javac 17`을 출력했다. 현재
-PowerShell에서 JDK 17의 실행기와 컴파일러가 정상 동작한다는 점은 확인됐지만 프로젝트 기준인
-Java 21은 검증되지 않았다. Spring Boot source와 Gradle Wrapper는 아직 생성하지 않았으며,
-추가 진단에서 `PATH`가 가장 먼저 찾는 실행 파일과 `JAVA_HOME`이 모두
-`C:\Program Files\Java\jdk-17`을 가리키는 것을 확인했다. 환경 변수끼리 충돌하는 상태는 아니며,
-`C:\Program Files\Java`의 하위 디렉터리도 `jdk-17` 하나뿐이었다. 기존 Oracle JDK 17은 보존하고
-Eclipse Temurin 21 JDK를 추가하는 방안을 우선 검토한다. `winget` client는 `v1.29.280`, 종료 코드
-`0`으로 실행됐지만 Temurin package 조회에서는 `winget` source 업데이트가 실패했고 package를 찾지
-못했다는 종료 코드 `-1978335212`가 반환됐다. source 상태를 확인하기 전에는 Package ID 오류로
-확정하지 않는다. OCI compute와 Oracle JDK는 별도 선택이므로, 나중에 OCI에 배포하더라도 Java 21과
-호환되는 Temurin, OpenJDK 또는 Oracle JDK runtime을 선택할 수 있다. 후속 `winget source list`에서는
-기본 source 세 개와 각 주소가 정상적으로 조회돼 source 누락과 잘못된 주소 가능성을 제외했다. 실제
-source 갱신도 진행률 `100%`, `완료`, 종료 코드 `0`으로 성공했다. Package 조회는 아직 다시 실행하지
-않았으므로 Temurin 21 package의 현재 정보는 검증되지 않았다.
+M2의 첫 TODO인 Java 21 JDK 실행 환경 사전검증을 완료했다. 처음에는 Oracle JDK 17만 설치돼 있었고
+`PATH`와 `JAVA_HOME`도 version 17을 선택했다. WinGet source를 수동 갱신한 뒤 정확한
+`EclipseAdoptium.Temurin.21.JDK` package를 조회해 Temurin `21.0.12.8`을 기존 Oracle JDK 17과 함께
+설치했다. system `JAVA_HOME`과 `PATH`는 Temurin 21을 우선하도록 설정됐다. 설치 전에 열려 있던
+PowerShell은 이전 환경 변수를 유지해 계속 version 17을 출력했지만, system 값을 다시 읽은 process에서는
+첫 `java`와 `javac`가 Temurin 경로를 가리키고 각각 `openjdk version "21.0.12"`, `javac 21.0.12`,
+종료 코드 `0`을 출력했다. 컴퓨터 재시작은 필요하지 않으며 기존 terminal application을 다시 열면 된다.
+OCI compute와 Oracle JDK는 별도 선택이므로 나중에 OCI에 배포하더라도 Java 21과 호환되는 Temurin,
+OpenJDK 또는 Oracle JDK runtime을 선택할 수 있다. Spring Boot source와 Gradle Wrapper는 아직
+생성하지 않았다.
 
 구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
 중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
@@ -93,10 +88,11 @@ network 경계를 문서화했다.
 - 다섯 service의 강제 재생성, 동시 `healthy` 전환과 loopback 공개 port 검증
 - 전체 service 실행 중 PostgreSQL·Redis·MongoDB 인증 접속, Kafka host listener와 Kafka UI cluster 조회 검증
 - M2 Java 21 JDK 사전검증 기준과 실패 조건 문서화
+- Eclipse Temurin 21 JDK 설치, system `JAVA_HOME`·`PATH`와 `java`·`javac` version 21 검증
 
 ## 아직 구현되지 않은 항목
 
-- Java 21 JDK 실행 환경 검증, Spring Boot source와 Gradle build
+- Spring Boot source와 Gradle Wrapper·build
 - FastAPI source와 Python package
 - DB schema와 migration
 - Kafka application topic과 producer/consumer
@@ -238,15 +234,17 @@ network 경계를 문서화했다.
 | 2026-08-11 | WinGet client와 Temurin package 조회 | client `v1.29.280`·종료 코드 `0`; source 업데이트 실패 후 package 미발견·종료 코드 `-1978335212` |
 | 2026-08-11 | WinGet source 등록 상태 | `msstore`, `winget`, `winget-font`와 기본 주소 확인; 전달된 출력에는 종료 코드 문자열 없음 |
 | 2026-08-11 | WinGet source 수동 갱신 | `winget` source 진행률 `100%`, `완료`, 종료 코드 `0` 확인 |
+| 2026-08-11 | Temurin 21 package 재조회 | ID `EclipseAdoptium.Temurin.21.JDK`, version `21.0.12.8`, publisher, Windows x64 WiX MSI, 종료 코드 `0` 확인 |
+| 2026-08-11 | Temurin 21 설치와 system 환경 | 설치 디렉터리 확인, system `JAVA_HOME`과 `PATH`에서 Temurin 21 우선 설정 확인 |
+| 2026-08-11 | Java 21 실행 환경 | 새 system 환경을 읽은 process에서 Temurin `java 21.0.12`, `javac 21.0.12`, 두 종료 코드 `0` 확인 |
 
 ## 알려진 실패와 blocker
 
 - M1 기능 blocker는 없음
-- M2의 Java 21 JDK 사전검증은 `PATH`와 `JAVA_HOME`이 모두 version 17을 선택해 미통과 상태이며
-  Oracle JDK 표준 설치 위치에도 Java 21이 없어 `ERR-006`에 `OPEN`으로 기록함
-- Temurin 21 package 조회에서 `winget` source 업데이트가 먼저 실패해 `ERR-007`에 `OPEN`으로
-  기록함. 기본 source 등록과 후속 수동 갱신은 정상이지만 최초 실패 원인은 아직 확인되지 않았으며,
-  Temurin package를 다시 조회하기 전에는 Package ID 오류 여부도 확정하지 않음
+- M2 Java 21 JDK 사전검증 blocker는 Temurin 21 설치와 새 system 환경의 실행 검증으로 해결했으며
+  `ERR-006`을 `RESOLVED`로 기록함
+- 최초 Temurin package 조회의 source 갱신 실패는 수동 갱신과 정확한 package 재조회로 해결했으며
+  `ERR-007`을 `RESOLVED`로 기록함
 - 일반 `git status`는 샌드박스 사용자와 저장소 소유권 차이로 `dubious ownership` 오류 발생
 - 전역 Git 설정 대신 명령별 `safe.directory` 옵션으로 Git 명령을 실행함
 - 저장소 밖에서 실행한 `git check-ignore`와 파일명 오기입으로 인한 `.env.example` 검증 실패는
@@ -263,9 +261,9 @@ network 경계를 문서화했다.
 
 ## 다음 작업
 
-PowerShell에서 `winget show --id EclipseAdoptium.Temurin.21.JDK --exact --source winget`을 다시 실행해
-Temurin 21 JDK package의 publisher, version과 installer 정보를 확인한다.
+Java 21 환경에서 Spring Initializr의 Gradle Kotlin DSL, Spring Boot 3.x, package와 M2 dependency
+구성을 확정한 뒤 `backend-spring/`에 기본 project를 생성한다.
 
 ## 다음 채팅 시작 문장
 
-`winget source update가 종료 코드 0으로 성공했어. Temurin 21 JDK package 재조회 결과를 바탕으로 다음 TODO를 안내해줘.`
+`StockCastProgram M2의 Java 21 JDK 사전검증을 완료했어. Spring Initializr 설정과 dependency를 설명하고 기본 project 생성을 안내해줘.`
