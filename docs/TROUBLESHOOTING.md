@@ -27,7 +27,7 @@
 | ERR-004 | 2026-08-07 | M1 | RESOLVED | `psql`의 `CREATE` 구문이 끝에서 잘림 | 중첩된 셸에서 SQL 인자 경계가 사라짐 |
 | ERR-005 | 2026-08-10 | M1 | RESOLVED | Kafka UI cluster 값이 빈 표로 보임 | JSON 배열을 pipeline에서 펼치지 않음 |
 | ERR-006 | 2026-08-11 | M2 | OPEN | Java 21 사전검증에서 version 17 확인 | 현재 PowerShell이 JDK 17을 선택함 |
-| ERR-007 | 2026-08-11 | M2 | OPEN | `winget show`에서 source 업데이트와 package 조회 실패 | 기본 source 등록은 정상, 갱신 실패 원인은 미확정 |
+| ERR-007 | 2026-08-11 | M2 | OPEN | `winget show`에서 source 업데이트와 package 조회 실패 | 수동 source 갱신 성공, 최초 실패 원인은 미확정 |
 
 ## ERR-001: 저장소를 찾지 못한 `git check-ignore`
 
@@ -158,17 +158,20 @@
   `원본을 업데이트하지 못했습니다. winget` 다음에 `입력 조건과 일치하는 패키지를 찾을 수 없습니다.`가
   출력됐고 종료 코드는 `-1978335212`였다.
 - 원인: 아직 확정되지 않았다. Microsoft의 공식 return code 표에서 `-1978335212`는 조회 조건에 맞는
-  package가 없다는 뜻이다. 그러나 같은 실행에서 `winget` source 업데이트가 먼저 실패했으므로 local
-  cache 또는 source 접근 문제를 우선 확인한다. `winget source list`에서 기본 source 세 개가 모두
+  package가 없다는 뜻이다. 그러나 같은 실행에서 `winget` source 업데이트가 먼저 실패했다.
+  `winget source list`에서 기본 source 세 개가 모두
   조회됐고 `winget`도 정상 주소인 `https://cdn.winget.microsoft.com/cache`를 가리켰으므로 source가
-  누락됐거나 주소가 잘못 등록된 가설은 제외한다. 현재 증거만으로 Package ID 오류라고 단정하지 않는다.
+  누락됐거나 주소가 잘못 등록된 가설은 제외한다. 이어서 수동 source 갱신도 성공했으므로 지속적인
+  network 접근 장애도 현재는 재현되지 않는다. 최초 실패가 일시적인 접근 문제였는지 local cache
+  상태였는지는 아직 확정하지 않았고, 현재 증거만으로 Package ID 오류라고도 단정하지 않는다.
 - 해결 과정: source를 초기화하거나 JDK를 수동 설치하지 않았다. 읽기 전용인 `winget source list`로
-  기본 source 등록이 정상임을 확인했다. 다음에는 `winget source update --name winget`으로 실제 source
-  갱신이 성공하는지 확인하고, 실패할 때만 reset이나 verbose log 확인을 별도 단계로 진행한다.
+  기본 source 등록이 정상임을 확인했다. `winget source update --name winget`을 실행하자 진행률이
+  `100%`에 도달하고 `완료`가 출력됐으며 종료 코드 `0`으로 끝났다. source reset은 실행하지 않았다.
+  다음에는 처음 실패한 정확한 `winget show` 명령을 다시 실행한다.
 - 검증 결과: `msstore`, `winget`, `winget-font`의 이름과 주소, 명시적 설정이 기본값과 일치했다.
   전달된 출력에는 종료 코드 문자열이 포함되지 않아 `source list`의 종료 코드는 별도로 확정하지 않았다.
-  Package 정보 조회와 Temurin 21 JDK 설치는 아직 성공하지 않았으므로 `ERR-006`과 이 항목을 모두
-  `OPEN`으로 유지한다.
+  `winget` source의 수동 갱신은 종료 코드 `0`으로 확인했다. Package 정보 조회와 Temurin 21 JDK 설치는
+  아직 성공하지 않았으므로 `ERR-006`과 이 항목을 모두 `OPEN`으로 유지한다.
 - 재발 방지: package를 찾지 못했다는 출력 앞에 source 관련 오류가 있으면 Package ID부터 바꾸지 않는다.
   `winget source list`와 source update 결과를 먼저 확인하고 필요하면 verbose log로 원인을 좁힌다.
 

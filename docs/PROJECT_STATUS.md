@@ -57,7 +57,8 @@ Eclipse Temurin 21 JDK를 추가하는 방안을 우선 검토한다. `winget` c
 확정하지 않는다. OCI compute와 Oracle JDK는 별도 선택이므로, 나중에 OCI에 배포하더라도 Java 21과
 호환되는 Temurin, OpenJDK 또는 Oracle JDK runtime을 선택할 수 있다. 후속 `winget source list`에서는
 기본 source 세 개와 각 주소가 정상적으로 조회돼 source 누락과 잘못된 주소 가능성을 제외했다. 실제
-source 갱신과 package 조회는 아직 성공하지 않았다.
+source 갱신도 진행률 `100%`, `완료`, 종료 코드 `0`으로 성공했다. Package 조회는 아직 다시 실행하지
+않았으므로 Temurin 21 package의 현재 정보는 검증되지 않았다.
 
 구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
 중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
@@ -236,6 +237,7 @@ network 경계를 문서화했다.
 | 2026-08-11 | Oracle JDK 설치 디렉터리 조회 | `C:\Program Files\Java` 조회 성공, 하위 디렉터리는 `jdk-17` 하나로 Java 21 없음 |
 | 2026-08-11 | WinGet client와 Temurin package 조회 | client `v1.29.280`·종료 코드 `0`; source 업데이트 실패 후 package 미발견·종료 코드 `-1978335212` |
 | 2026-08-11 | WinGet source 등록 상태 | `msstore`, `winget`, `winget-font`와 기본 주소 확인; 전달된 출력에는 종료 코드 문자열 없음 |
+| 2026-08-11 | WinGet source 수동 갱신 | `winget` source 진행률 `100%`, `완료`, 종료 코드 `0` 확인 |
 
 ## 알려진 실패와 blocker
 
@@ -243,8 +245,8 @@ network 경계를 문서화했다.
 - M2의 Java 21 JDK 사전검증은 `PATH`와 `JAVA_HOME`이 모두 version 17을 선택해 미통과 상태이며
   Oracle JDK 표준 설치 위치에도 Java 21이 없어 `ERR-006`에 `OPEN`으로 기록함
 - Temurin 21 package 조회에서 `winget` source 업데이트가 먼저 실패해 `ERR-007`에 `OPEN`으로
-  기록함. 기본 source 등록은 정상이지만 실제 갱신 실패 원인은 아직 확인되지 않았으며 Package ID
-  오류로도 확정하지 않음
+  기록함. 기본 source 등록과 후속 수동 갱신은 정상이지만 최초 실패 원인은 아직 확인되지 않았으며,
+  Temurin package를 다시 조회하기 전에는 Package ID 오류 여부도 확정하지 않음
 - 일반 `git status`는 샌드박스 사용자와 저장소 소유권 차이로 `dubious ownership` 오류 발생
 - 전역 Git 설정 대신 명령별 `safe.directory` 옵션으로 Git 명령을 실행함
 - 저장소 밖에서 실행한 `git check-ignore`와 파일명 오기입으로 인한 `.env.example` 검증 실패는
@@ -261,9 +263,9 @@ network 경계를 문서화했다.
 
 ## 다음 작업
 
-PowerShell에서 `winget source update --name winget`을 실행해 기본 `winget` source의 실제 갱신 경로를
-확인한다. 성공하면 Temurin package 정보를 다시 조회하고, 실패하면 출력과 종료 코드로 원인을 좁힌다.
+PowerShell에서 `winget show --id EclipseAdoptium.Temurin.21.JDK --exact --source winget`을 다시 실행해
+Temurin 21 JDK package의 publisher, version과 installer 정보를 확인한다.
 
 ## 다음 채팅 시작 문장
 
-`winget source 등록은 정상이야. winget source update --name winget 결과를 바탕으로 다음 TODO를 안내해줘.`
+`winget source update가 종료 코드 0으로 성공했어. Temurin 21 JDK package 재조회 결과를 바탕으로 다음 TODO를 안내해줘.`

@@ -135,6 +135,12 @@ font repository 주소를 가리켰고 각 source의 명시적 설정도 기본�
 포함되지 않아 `source list`의 종료 코드는 별도로 확정하지 않는다. 다음에는
 `winget source update --name winget`으로 등록 정보가 아닌 실제 source 갱신 경로를 확인한다.
 
+실제 source 갱신에서는 진행률이 `100%`에 도달하고 `완료`가 출력됐으며 종료 코드도 `0`이었다.
+따라서 현재 `winget` source는 network를 통해 package index를 정상적으로 갱신할 수 있다. 처음
+`winget show`에서 발생한 source 업데이트 실패가 계속 재현되는 상태는 아니지만, package 조회 자체는
+아직 다시 실행하지 않았으므로 Temurin 21 package가 조회된다고 확정하지 않는다. 같은 정확한 Package
+ID로 `winget show`를 다시 실행해 source 갱신과 package 검색을 분리해서 검증한다.
+
 Package ID를 정확히 지정하고 `--exact`를 사용하면 비슷한 이름의 JRE나 다른 Java version을 선택하는
 실수를 막을 수 있다. JRE는 실행 환경만 제공하는 package이므로 source와 test를 컴파일해야 하는 현재
 프로젝트에는 JDK package가 필요하다.
