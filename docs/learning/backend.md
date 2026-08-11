@@ -122,15 +122,44 @@ Eclipse Temurin 21 JDK를 함께 설치하는 방식을 추천한다. 프로젝�
 다시 구성할 때 같은 선택을 설명하기 쉽다.
 
 설치 전에 `winget show`로 `EclipseAdoptium.Temurin.21.JDK` package의 publisher, version과 installer
-정보를 확인한다. Package ID를 정확히 지정하고 `--exact`를 사용하면 비슷한 이름의 JRE나 다른 Java
-version을 선택하는 실수를 막을 수 있다. JRE는 실행 환경만 제공하는 package이므로 source와 test를
-컴파일해야 하는 현재 프로젝트에는 JDK package가 필요하다.
+정보를 확인하려 했다. `winget` 자체는 `v1.29.280`, 종료 코드 `0`으로 실행됐지만 package 조회에서는
+`원본을 업데이트하지 못했습니다. winget`과 `입력 조건과 일치하는 패키지를 찾을 수 없습니다.`가
+차례로 출력됐고 종료 코드는 `-1978335212`였다. Microsoft의 공식 return code 표에서 이 값은 package를
+찾지 못했다는 뜻이다. 다만 그 전에 package 정보를 제공하는 source 업데이트가 실패했으므로, 이 결과만
+보고 Package ID가 틀렸거나 Temurin 21이 없다고 확정하지 않는다. 다음에는 `winget source list`로 현재
+등록된 source의 이름과 주소를 먼저 확인한다.
+
+Package ID를 정확히 지정하고 `--exact`를 사용하면 비슷한 이름의 JRE나 다른 Java version을 선택하는
+실수를 막을 수 있다. JRE는 실행 환경만 제공하는 package이므로 source와 test를 컴파일해야 하는 현재
+프로젝트에는 JDK package가 필요하다.
+
+### OCI 배포와 JDK 배포판의 관계
+
+OCI Compute는 가상 서버를 제공하는 cloud infrastructure이고 Oracle JDK는 Java 구현을 배포하는 JDK
+제품이다. 두 선택은 서로 독립적이므로 OCI의 Always Free compute를 사용한다고 Oracle JDK를 반드시
+설치해야 하는 것은 아니다. OCI에서는 Oracle Linux나 Ubuntu image를 선택할 수 있고, Oracle Linux
+Cloud Developer image에도 OpenJDK 21이 포함된다.
+
+로컬 Windows에서 Temurin 21 JDK로 만든 일반 Spring Boot JAR는 서버에서 Java 21과 호환되는 Temurin,
+OpenJDK 또는 Oracle JDK runtime으로 실행할 수 있다. Java bytecode가 운영체제와 CPU에 직접 묶이지
+않기 때문이다. 다만 JNI 같은 native library, 즉 운영체제별 binary를 호출하는 의존성을 추가하면
+서버의 Linux 배포판과 `x86_64` 또는 `aarch64` CPU 구조까지 맞춰야 한다. 현재 프로젝트에는 아직
+Spring Boot source와 native library가 없으므로 그 예외는 발생하지 않았다.
+
+따라서 현재 개발 PC에는 Temurin 21 JDK를 설치하고, 배포 시점에는 선택한 OCI image와 CPU 구조에 맞는
+Java 21 runtime을 다시 고른다. Oracle JDK의 상용 지원이나 license가 필요한지는 cloud 제공자 이름이
+아니라 운영 지원 요구사항을 기준으로 별도로 판단한다.
 
 공식 근거:
 
 - [Eclipse Temurin 설치 안내](https://adoptium.net/installation/)
 - [Eclipse Temurin Windows MSI 안내](https://adoptium.net/installation/windows/)
 - [Microsoft WinGet install 명령](https://learn.microsoft.com/windows/package-manager/winget/install)
+- [Microsoft WinGet source 명령](https://learn.microsoft.com/windows/package-manager/winget/source)
+- [Microsoft WinGet return code](https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md)
+- [OCI Always Free Resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)
+- [Oracle Linux Cloud Developer image](https://docs.oracle.com/en-us/iaas/oracle-linux/oci/developer-image.htm)
+- [Oracle JDK 21 Linux 설치 안내](https://docs.oracle.com/en/java/javase/21/install/installation-jdk-linux-platforms.html)
 
 ### 면접 질문과 답변 keyword
 

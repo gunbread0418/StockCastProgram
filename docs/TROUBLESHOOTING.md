@@ -27,6 +27,7 @@
 | ERR-004 | 2026-08-07 | M1 | RESOLVED | `psql`의 `CREATE` 구문이 끝에서 잘림 | 중첩된 셸에서 SQL 인자 경계가 사라짐 |
 | ERR-005 | 2026-08-10 | M1 | RESOLVED | Kafka UI cluster 값이 빈 표로 보임 | JSON 배열을 pipeline에서 펼치지 않음 |
 | ERR-006 | 2026-08-11 | M2 | OPEN | Java 21 사전검증에서 version 17 확인 | 현재 PowerShell이 JDK 17을 선택함 |
+| ERR-007 | 2026-08-11 | M2 | OPEN | `winget show`에서 source 업데이트와 package 조회 실패 | `winget` source 상태 미확인 |
 
 ## ERR-001: 저장소를 찾지 못한 `git check-ignore`
 
@@ -145,6 +146,29 @@
 - 재발 방지: JDK를 설치하거나 환경 변수를 바꾼 뒤에는 새 PowerShell을 열어 `java`와 `javac`의
   실제 major version과 종료 코드를 다시 확인한다. Gradle Wrapper 생성과 build는 두 명령이 모두
   프로젝트 기준 version을 가리킨 뒤 시작한다.
+
+## ERR-007: WinGet source 업데이트와 Temurin package 조회 실패
+
+- 날짜: 2026-08-11
+- 마일스톤: M2. Spring Boot 기본 구성
+- 상태: `OPEN`
+- 실행 맥락: Temurin 21 JDK를 설치하기 전에 package 정보를 확인하려고 새 PowerShell에서
+  `winget show --id EclipseAdoptium.Temurin.21.JDK --exact --source winget`을 실행했다.
+- 증상: `winget --version`은 `v1.29.280`, 종료 코드 `0`으로 정상 실행됐다. 이어진 package 조회에서는
+  `원본을 업데이트하지 못했습니다. winget` 다음에 `입력 조건과 일치하는 패키지를 찾을 수 없습니다.`가
+  출력됐고 종료 코드는 `-1978335212`였다.
+- 원인: 아직 확정되지 않았다. Microsoft의 공식 return code 표에서 `-1978335212`는 조회 조건에 맞는
+  package가 없다는 뜻이다. 그러나 같은 실행에서 `winget` source 업데이트가 먼저 실패했으므로 source
+  등록 정보, local cache 또는 source 접근 문제를 우선 확인한다. 현재 증거만으로 Package ID 오류라고
+  단정하지 않는다.
+- 해결 과정: source를 초기화하거나 JDK를 수동 설치하지 않았다. 먼저 읽기 전용인
+  `winget source list`로 현재 등록된 source 이름과 주소를 확인한다. 기본 `winget` source는
+  `https://cdn.winget.microsoft.com/cache`를 가리켜야 한다. 조회 결과에 따라 update 또는 reset을
+  별도 단계로 진행한다.
+- 검증 결과: WinGet client 실행 가능 여부만 확인했고 package 정보 조회는 실패했다. Temurin 21 JDK는
+  아직 설치하지 않았으므로 `ERR-006`과 이 항목을 모두 `OPEN`으로 유지한다.
+- 재발 방지: package를 찾지 못했다는 출력 앞에 source 관련 오류가 있으면 Package ID부터 바꾸지 않는다.
+  `winget source list`와 source update 결과를 먼저 확인하고 필요하면 verbose log로 원인을 좁힌다.
 
 ## 새 오류 기록 템플릿
 

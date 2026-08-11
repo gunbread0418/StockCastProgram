@@ -51,8 +51,11 @@ Java 21은 검증되지 않았다. Spring Boot source와 Gradle Wrapper는 아�
 추가 진단에서 `PATH`가 가장 먼저 찾는 실행 파일과 `JAVA_HOME`이 모두
 `C:\Program Files\Java\jdk-17`을 가리키는 것을 확인했다. 환경 변수끼리 충돌하는 상태는 아니며,
 `C:\Program Files\Java`의 하위 디렉터리도 `jdk-17` 하나뿐이었다. 기존 Oracle JDK 17은 보존하고
-Eclipse Temurin 21 JDK를 추가하는 방안을 우선 검토하며, 설치 전에 Windows Package Manager에서
-정확한 JDK package 정보를 확인한다.
+Eclipse Temurin 21 JDK를 추가하는 방안을 우선 검토한다. `winget` client는 `v1.29.280`, 종료 코드
+`0`으로 실행됐지만 Temurin package 조회에서는 `winget` source 업데이트가 실패했고 package를 찾지
+못했다는 종료 코드 `-1978335212`가 반환됐다. source 상태를 확인하기 전에는 Package ID 오류로
+확정하지 않는다. OCI compute와 Oracle JDK는 별도 선택이므로, 나중에 OCI에 배포하더라도 Java 21과
+호환되는 Temurin, OpenJDK 또는 Oracle JDK runtime을 선택할 수 있다.
 
 구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
 중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
@@ -229,12 +232,15 @@ network 경계를 문서화했다.
 | 2026-08-11 | Java 21 JDK 사전검증 | `java`와 `javac`는 종료 코드 `0`이지만 모두 version 17로 확인되어 Java 21 기준 미통과 |
 | 2026-08-11 | JDK 실행 경로 진단 | `PATH`의 첫 `java`·`javac`와 `JAVA_HOME`이 모두 `C:\Program Files\Java\jdk-17`을 가리킴 |
 | 2026-08-11 | Oracle JDK 설치 디렉터리 조회 | `C:\Program Files\Java` 조회 성공, 하위 디렉터리는 `jdk-17` 하나로 Java 21 없음 |
+| 2026-08-11 | WinGet client와 Temurin package 조회 | client `v1.29.280`·종료 코드 `0`; source 업데이트 실패 후 package 미발견·종료 코드 `-1978335212` |
 
 ## 알려진 실패와 blocker
 
 - M1 기능 blocker는 없음
 - M2의 Java 21 JDK 사전검증은 `PATH`와 `JAVA_HOME`이 모두 version 17을 선택해 미통과 상태이며
   Oracle JDK 표준 설치 위치에도 Java 21이 없어 `ERR-006`에 `OPEN`으로 기록함
+- Temurin 21 package 조회에서 `winget` source 업데이트가 먼저 실패해 `ERR-007`에 `OPEN`으로
+  기록했으며, source 상태를 확인하기 전에는 Package ID 오류로 확정하지 않음
 - 일반 `git status`는 샌드박스 사용자와 저장소 소유권 차이로 `dubious ownership` 오류 발생
 - 전역 Git 설정 대신 명령별 `safe.directory` 옵션으로 Git 명령을 실행함
 - 저장소 밖에서 실행한 `git check-ignore`와 파일명 오기입으로 인한 `.env.example` 검증 실패는
@@ -251,9 +257,9 @@ network 경계를 문서화했다.
 
 ## 다음 작업
 
-PowerShell에서 `winget` version과 `EclipseAdoptium.Temurin.21.JDK` package 정보를 확인한다.
-정확한 JDK 21 package가 조회되면 기존 Oracle JDK 17을 보존한 채 Temurin 21 설치로 이동한다.
+PowerShell에서 `winget source list`를 실행해 현재 등록된 source 이름과 주소를 확인한다. 기본
+`winget` source가 올바르게 등록됐는지 확인한 뒤 update 또는 reset 여부를 결정한다.
 
 ## 다음 채팅 시작 문장
 
-`C:\Program Files\Java에는 jdk-17만 있어. winget에서 Eclipse Temurin 21 JDK package를 확인하는 다음 TODO를 안내해줘.`
+`winget show에서 source 업데이트가 실패했어. winget source list 결과를 바탕으로 다음 TODO를 안내해줘.`
