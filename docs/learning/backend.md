@@ -104,6 +104,17 @@ PowerShell에서 정상적으로 선택된다는 사실을 확인한다. 그러�
 `where.exe`로 선택 가능한 실행 파일 경로를 확인하고 `JAVA_HOME`과 비교한다. Java 21이 설치되지
 않은 것인지, 설치돼 있지만 Java 17 경로가 먼저 선택되는 것인지는 아직 확인되지 않았다.
 
+추가 진단에서 `where.exe`가 가장 먼저 찾은 실행 파일은
+`C:\Program Files\Java\jdk-17\bin\java.exe`와
+`C:\Program Files\Java\jdk-17\bin\javac.exe`였다. 그다음에는 Oracle의 공통 Java 경로인
+`C:\Program Files\Common Files\Oracle\Java\javapath` 아래의 실행 파일이 검색됐다.
+`JAVA_HOME`도 `C:\Program Files\Java\jdk-17`이었다. 따라서 현재 `PATH`와 `JAVA_HOME`이 서로
+다른 JDK를 가리키는 문제는 없고, 두 설정 모두 일관되게 JDK 17을 선택한다.
+
+`where.exe`는 현재 `PATH`에 포함된 실행 파일만 찾으므로 이 결과만으로 Java 21이 컴퓨터의 다른
+경로에도 없다고 확정할 수는 없다. 다음 확인은 Oracle JDK가 설치된
+`C:\Program Files\Java`의 하위 디렉터리를 조회해 Java 21 설치 여부를 확인하는 것이다.
+
 ### 면접 질문과 답변 keyword
 
 질문: Spring Boot 개발 환경을 준비할 때 `java -version`과 `javac -version`을 왜 모두

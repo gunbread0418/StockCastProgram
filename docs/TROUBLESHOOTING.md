@@ -129,13 +129,17 @@
   만들기 전에 `java -version`과 `javac -version`을 실행했다.
 - 증상: `java version "17"`과 `javac 17`이 출력됐다. 두 명령의 종료 코드는 모두 `0`이었지만
   프로젝트 기준인 major version `21`과 일치하지 않았다.
-- 원인: 현재 PowerShell의 명령 검색 결과가 과거에 설치한 Oracle JDK 17 계열의 `java`와 `javac`를
-  선택한다. Java 21이 설치되지 않은 것인지, 설치돼 있지만 `PATH` 우선순위 때문에 선택되지 않는
-  것인지는 아직 확인되지 않았다.
-- 해결 과정: Spring Boot project 생성은 시작하지 않았다. 다음 진단으로 `where.exe java`,
-  `where.exe javac`와 `JAVA_HOME`을 확인해 실제 실행 파일과 환경 변수의 방향을 비교한다.
-- 검증 결과: JDK 17의 실행기와 컴파일러가 모두 동작한다는 점은 확인됐다. Java 21 JDK 실행 환경은
-  아직 검증되지 않았으므로 이 항목을 `OPEN`으로 유지한다.
+- 원인: 현재 PowerShell은 `C:\Program Files\Java\jdk-17\bin`의 `java.exe`와 `javac.exe`를 가장
+  먼저 찾고, `JAVA_HOME`도 `C:\Program Files\Java\jdk-17`을 가리킨다. 즉 `PATH`와 `JAVA_HOME`의
+  충돌이 아니라 두 설정이 모두 과거에 설치한 Oracle JDK 17을 선택하는 상태다. Java 21이 다른
+  경로에 설치됐는지는 아직 확인되지 않았다.
+- 해결 과정: Spring Boot project 생성과 환경 변수 변경은 시작하지 않았다. `where.exe java`와
+  `where.exe javac`에서 JDK 17의 직접 경로가 첫 번째이고 Oracle의 공통 `javapath`가 두 번째인
+  것을 확인했다. 다음에는 `C:\Program Files\Java`의 하위 디렉터리를 조회해 Oracle JDK 21의 설치
+  여부를 확인한다.
+- 검증 결과: JDK 17 실행 파일 경로와 `JAVA_HOME`이 서로 일치한다. `where.exe`는 `PATH`에 포함된
+  경로만 검색하므로 Java 21의 미설치 여부는 아직 확정하지 않았고, Java 21 JDK 실행 환경도
+  검증되지 않아 이 항목을 `OPEN`으로 유지한다.
 - 재발 방지: JDK를 설치하거나 환경 변수를 바꾼 뒤에는 새 PowerShell을 열어 `java`와 `javac`의
   실제 major version과 종료 코드를 다시 확인한다. Gradle Wrapper 생성과 build는 두 명령이 모두
   프로젝트 기준 version을 가리킨 뒤 시작한다.

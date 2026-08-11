@@ -48,8 +48,9 @@ M2의 첫 TODO로 Java 21 JDK 실행 환경 사전검증을 시작했다. `java 
 모두 종료 코드 `0`으로 실행됐지만 각각 `java version "17"`과 `javac 17`을 출력했다. 현재
 PowerShell에서 JDK 17의 실행기와 컴파일러가 정상 동작한다는 점은 확인됐지만 프로젝트 기준인
 Java 21은 검증되지 않았다. Spring Boot source와 Gradle Wrapper는 아직 생성하지 않았으며,
-다음에는 실제 실행 파일 경로와 `JAVA_HOME`을 확인해 Java 21 미설치와 경로 우선순위 문제를
-구분한다.
+추가 진단에서 `PATH`가 가장 먼저 찾는 실행 파일과 `JAVA_HOME`이 모두
+`C:\Program Files\Java\jdk-17`을 가리키는 것을 확인했다. 환경 변수끼리 충돌하는 상태는 아니며,
+Java 21이 다른 경로에 설치됐는지는 아직 확인되지 않았다.
 
 구현 중 또는 별도 개념 채팅에서 질문한 내용은 `docs/learning/`의 다섯 넓은 category에
 중복 없이 축적한다. 첫 기록으로 Docker Compose의 host port, container port와 service
@@ -224,12 +225,13 @@ network 경계를 문서화했다.
 | 2026-08-10 | 전체 핵심 접속 경로 | PostgreSQL `SELECT 1`, Redis `PONG`, MongoDB `MONGO_OK`, Kafka `__consumer_offsets`와 Kafka UI `stockcast-local ONLINE` 확인 |
 | 2026-08-10 | M1 `.gitignore` 최종 점검 | Compose service에 repository 내부 bind mount가 없고 named volume·tmpfs만 사용하므로 추가 ignore 규칙이 필요하지 않음 |
 | 2026-08-11 | Java 21 JDK 사전검증 | `java`와 `javac`는 종료 코드 `0`이지만 모두 version 17로 확인되어 Java 21 기준 미통과 |
+| 2026-08-11 | JDK 실행 경로 진단 | `PATH`의 첫 `java`·`javac`와 `JAVA_HOME`이 모두 `C:\Program Files\Java\jdk-17`을 가리킴 |
 
 ## 알려진 실패와 blocker
 
 - M1 기능 blocker는 없음
-- M2의 Java 21 JDK 사전검증은 현재 PowerShell이 version 17을 선택해 미통과 상태이며
-  `ERR-006`에 `OPEN`으로 기록함
+- M2의 Java 21 JDK 사전검증은 `PATH`와 `JAVA_HOME`이 모두 version 17을 선택해 미통과 상태이며
+  Java 21의 다른 경로 설치 여부는 미확인 상태로 `ERR-006`에 `OPEN`으로 기록함
 - 일반 `git status`는 샌드박스 사용자와 저장소 소유권 차이로 `dubious ownership` 오류 발생
 - 전역 Git 설정 대신 명령별 `safe.directory` 옵션으로 Git 명령을 실행함
 - 저장소 밖에서 실행한 `git check-ignore`와 파일명 오기입으로 인한 `.env.example` 검증 실패는
@@ -246,10 +248,10 @@ network 경계를 문서화했다.
 
 ## 다음 작업
 
-PowerShell에서 `where.exe java`, `where.exe javac`와 `JAVA_HOME`을 확인해 현재 선택된 JDK 17의
-실행 파일 경로와 환경 변수를 비교한다. 이 결과로 Java 21을 새로 설치해야 하는지, 이미 설치된
-Java 21의 경로를 선택하면 되는지 결정한다.
+PowerShell에서 `C:\Program Files\Java`의 하위 디렉터리를 조회해 Oracle JDK 21이 이미 설치돼
+있는지 확인한다. JDK 17만 있으면 Java 21 설치 단계로 이동하고, JDK 21 디렉터리가 있으면 설치를
+반복하지 않고 해당 경로의 실행 파일을 직접 검증한다.
 
 ## 다음 채팅 시작 문장
 
-`Java 21 JDK 사전검증에서 java와 javac가 모두 version 17로 나왔어. 실제 실행 파일 경로와 JAVA_HOME을 확인하는 다음 TODO를 안내해줘.`
+`PATH와 JAVA_HOME이 모두 C:\Program Files\Java\jdk-17을 가리켜. C:\Program Files\Java에 Java 21이 설치돼 있는지 확인하는 다음 TODO를 안내해줘.`
