@@ -100,6 +100,7 @@ network 경계를 문서화했다.
 - 공식 Initializr의 Gradle Kotlin DSL·Java 21 기본 project와 Gradle Wrapper 9.5.1 생성
 - Spring Boot 4.1.0 기본 context test와 Gradle build 성공 검증
 - Java 21.0.12 runtime, embedded Tomcat과 Actuator health HTTP 200·`UP` 검증
+- 읽기 전용 확인은 사용자가 정상 기준과 비교하고, 문서·commit은 의미 있는 작업 단위로 묶는 규칙 반영
 
 ## 아직 구현되지 않은 항목
 
@@ -159,7 +160,7 @@ network 경계를 문서화했다.
 - `docs/ROADMAP.md`: M1 상태를 `IN_PROGRESS`로 전환
 - `docs/learning/README.md`: 다섯 개념 category와 질문 기록·중복 방지 규칙
 - `docs/learning/infrastructure.md`: Docker Compose `ports` 개념과 프로젝트 적용 기록
-- `AGENTS.md`: 구현·개념 전용 채팅의 지속적인 학습 문서 갱신 규칙
+- `AGENTS.md`: 학습 문서 갱신과 의미 있는 TODO·읽기 전용 자체 확인·commit 묶음 규칙
 - `infra/compose.yaml`: PostgreSQL·MongoDB·Kafka 영구 저장 service, Redis 재생성 가능 cache와 Kafka UI의 실행 설정
 - `docs/learning/infrastructure.md`: PostgreSQL environment, volume, healthcheck의 실제 검증 결과
 - `docs/learning/infrastructure.md`: Redis 인증, healthcheck와 비영구 cache 정책의 실제 검증 결과
@@ -259,6 +260,7 @@ network 경계를 문서화했다.
 | 2026-08-11 | Spring Initializr 4.1.0 project 생성 | Gradle Kotlin DSL, Java 21, `com.stockcast`, Web MVC·Validation·Actuator와 Gradle Wrapper 9.5.1 확인 |
 | 2026-08-11 | Spring Boot 기본 context test | `.\gradlew.bat test --no-daemon` 종료 코드 `0`, compile과 `contextLoads()` 성공 |
 | 2026-08-11 | Spring Boot 기본 runtime과 health | Java 21.0.12, Spring Boot 4.1.0, Tomcat 8080 실행; `/actuator/health` HTTP 200·`UP`, 종료 후 listener 0개 확인 |
+| 2026-08-11 | 작업 단위와 확인 보고 규칙 | 읽기 전용 확인은 정상 기준으로 자체 판정하고 설치·구현·오류 해결 단위에서 문서와 commit을 한 번에 처리하도록 `AGENTS.md` 갱신 |
 
 ## 알려진 실패와 blocker
 
